@@ -41,12 +41,16 @@ Natija: `techzone.duckdns.org`.
 
 Google Cloud konsol → *Compute Engine → VM instances* → Yaproq go'sht VM → **SSH** tugmasi. Ochilgan oynada:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/uBakhtiyarov3/techzone-bot/HEAD/deploy/get.sh | bash
-```
+Repo **private**, shuning uchun avval GitHub token oling: GitHub → Settings → Developer settings →
+*Fine-grained tokens* → **Generate** → Repository access: faqat `techzone-bot` → Permissions: *Contents: Read-only*.
 
-> Repo **private** bo'lsa `git clone` GitHub login va **Personal Access Token** so'raydi
-> (GitHub → Settings → Developer settings → Fine-grained tokens → faqat `techzone-bot` repo, *Contents: Read*).
+```bash
+sudo apt-get update -y && sudo apt-get install -y git
+git config --global credential.helper store      # token bir marta so'raladi (update.sh uchun ham)
+git clone https://github.com/uBakhtiyarov3/techzone-bot.git ~/techzone-bot
+#   Username: GitHub loginingiz,  Password: yuqoridagi token
+bash ~/techzone-bot/deploy/install.sh
+```
 
 Skript so'raydi:
 
