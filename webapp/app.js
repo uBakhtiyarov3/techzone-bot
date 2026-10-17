@@ -1,859 +1,844 @@
+/* Tech.Zone Mini App — vanilla JS, build talab qilmaydi.
+   Marshrutlar (hash): #home #catalog #catalog/c3 #p12 #cart #checkout #fav #compare #orders #oTZ-123456 #placed/TZ-1 */
 (() => {
   "use strict";
 
   const tg = window.Telegram && window.Telegram.WebApp;
   const initData = (tg && tg.initData) || "";
   const devUser = new URLSearchParams(location.search).get("dev_user");
-  const API = ((window.YG_CONFIG && window.YG_CONFIG.api) || "").replace(/\/$/, "");
+  const API = (((window.SHOP_CONFIG || window.YG_CONFIG) || {}).api || "").replace(/\/$/, "");
+  const view = document.getElementById("view");
+  const dock = document.getElementById("dock");
+  const sheetEl = document.getElementById("sheet");
+  const backdrop = document.getElementById("sheet-backdrop");
+  const store = { get(k, d) { try { return JSON.parse(localStorage.getItem("shop_" + k)) ?? d; } catch (e) { return d; } },
+    set(k, v) { try { localStorage.setItem("shop_" + k, JSON.stringify(v)); } catch (e) { /* private mode */ } } };
 
-  const state = {
-    lang: "uz",
-    texts: {},
-    categories: [],
-    products: {},          // id -> product
-    settings: { is_open: true, accepting: true, delivery_fee: 0, min_order: 0, delivery_enabled: true, pickup_enabled: true },
-    slots: [],
-    cart: loadCart(),      // [{pid, v, qty}]
-    me: null,
-    view: "menu",
-    history: [],
-    currentOrder: null,
-    pollTimer: null,
-    query: "",
-    co: { type: "delivery", time: "asap", day: 0, slot: "", promo: "", quote: null },
+  const S = {
+    boot: null, texts: {}, lang: "uz", byId: {}, favs: new Set(),
+    cart: store.get("cart", []), compare: store.get("cmp", []), draft: store.get("draft", {}),
+    f: { cat: 0, brands: [], q: "", sort: "popular", min: "", max: "", stock: false, sale: false },
+    pcache: {}, orders: null, timers: [], heroIdx: 0,
   };
 
-  // ---------------- utils ----------------
-  const $ = (s) => document.querySelector(s);
+  // ---------------- yordamchilar ----------------
   const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-  const L = (key, vars) => {
-    let s = state.texts[key] ?? key;
-    if (vars) Object.entries(vars).forEach(([k, v]) => { s = s.split("{" + k + "}").join(v); });
+  const img = (p) => (!p ? "" : /^https?:/.test(p) ? p : (API ? API + "/" : "") + p);
+  const T = (k, vars) => {
+    let s = S.texts[k] || k;
+    if (vars) for (const [a, b] of Object.entries(vars)) s = s.split("{" + a + "}").join(b);
     return s;
   };
-  const money = (n) => Math.round(n).toLocaleString("ru-RU").replace(/ |,/g, " ") + (state.lang === "ru" ? " сум" : " so'm");
-  const imgUrl = (p) => (p ? (API && !/^https?:/.test(p) ? API + "/" + p : p) : "");
-  const haptic = (type = "light") => { try { tg && tg.HapticFeedback.impactOccurred(type); } catch (e) {} };
-  const notifyHaptic = (type) => { try { tg && tg.HapticFeedback.notificationOccurred(type); } catch (e) {} };
+  const num = (n) => String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
+  const priceHtml = (n) => `${num(n)}<span class="cur">${S.lang === "ru" ? "сум" : "so'm"}</span>`;
+  const money = (n) => String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, " ") + (S.lang === "ru" ? " сум" : " so'm");
+  const ico = (name, cls = "") => `<svg class="${cls}"><use href="#i-${name}"/></svg>`;
+  const haptic = (t = "light") => { try { tg && tg.HapticFeedback && (t === "ok" ? tg.HapticFeedback.notificationOccurred("success") : t === "err" ? tg.HapticFeedback.notificationOccurred("error") : t === "sel" ? tg.HapticFeedback.selectionChanged() : tg.HapticFeedback.impactOccurred(t)); } catch (e) { /* eski klient */ } };
+  const clearTimers = () => { S.timers.forEach(clearInterval); S.timers = []; };
 
-  function loadCart() {
-    try { const c = JSON.parse(localStorage.getItem("yg_cart") || "[]"); return Array.isArray(c) ? c : []; }
-    catch (e) { return []; }
-  }
-  function saveCart() {
-    try { localStorage.setItem("yg_cart", JSON.stringify(state.cart)); } catch (e) {}
-  }
-
-  let toastTimer;
-  function toast(text) {
-    const t = $("#toast");
-    t.textContent = text;
-    t.classList.remove("hidden");
-    clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => t.classList.add("hidden"), 2200);
+  function toast(text, bad = false) {
+    const el = document.getElementById("toast");
+    el.textContent = text;
+    el.className = "toast" + (bad ? " bad" : "");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => el.classList.add("hidden"), 2400);
+    haptic(bad ? "err" : "ok");
   }
 
   async function api(path, opts = {}) {
-    const headers = { "Content-Type": "application/json" };
+    const headers = opts.body instanceof FormData ? {} : { "Content-Type": "application/json" };
     if (initData) headers["X-Telegram-Init-Data"] = initData;
     else if (devUser) headers["X-Dev-User"] = devUser;
     let res;
     try {
-      res = await fetch(API + path, { ...opts, headers });
-    } catch (e) {
-      throw new Error(L("network"));
-    }
-    const data = await res.json().catch(() => ({ ok: false, error: "Server error" }));
-    if (!res.ok || !data.ok) throw new Error(data.error || "Error");
+      res = await fetch(API + path, { ...opts, headers: { ...headers, ...(opts.headers || {}) },
+        body: opts.body && !(opts.body instanceof FormData) ? JSON.stringify(opts.body) : opts.body });
+    } catch (e) { throw new Error(T("network")); }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || T("network"));
     return data;
   }
 
-  function applyTexts() {
-    document.documentElement.lang = state.lang;
-    document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = L(el.dataset.i18n); });
-    document.querySelectorAll("[data-i18n-ph]").forEach((el) => { el.placeholder = L(el.dataset.i18nPh); });
-    document.querySelectorAll("#lang-switch button").forEach((b) => b.classList.toggle("active", b.dataset.lang === state.lang));
+  // ---------------- sheet ----------------
+  function openSheet(html, onMount) {
+    sheetEl.innerHTML = `<div class="grab"></div>${html}`;
+    sheetEl.classList.remove("hidden");
+    backdrop.classList.remove("hidden");
+    onMount && onMount(sheetEl);
+  }
+  function closeSheet() { sheetEl.classList.add("hidden"); backdrop.classList.add("hidden"); sheetEl.innerHTML = ""; }
+  backdrop.addEventListener("click", closeSheet);
+
+  // ---------------- savat / solishtirish ----------------
+  const saveCart = () => { store.set("cart", S.cart); updateBadges(); };
+  const cartCount = () => S.cart.reduce((a, i) => a + i.qty, 0);
+  function addToCart(variantId, qty, max) {
+    const it = S.cart.find((x) => x.variant_id === variantId);
+    const cur = it ? it.qty : 0;
+    const want = Math.min(cur + qty, max || 20, 20);
+    if (want <= cur) { toast(T("maxQty"), true); return false; }
+    if (it) it.qty = want; else S.cart.push({ variant_id: variantId, qty: want });
+    saveCart();
+    const b = document.getElementById("cart-badge");
+    b.classList.remove("bump"); void b.offsetWidth; b.classList.add("bump");
+    toast("✓ " + T("added"));
+    return true;
+  }
+  function toggleCompare(pid) {
+    const i = S.compare.indexOf(pid);
+    if (i >= 0) S.compare.splice(i, 1);
+    else {
+      if (S.compare.length >= 4) { toast(T("compareLimit"), true); return false; }
+      S.compare.push(pid);
+      toast(T("compareAdded"));
+    }
+    store.set("cmp", S.compare);
+    return true;
+  }
+  async function toggleFav(pid) {
+    haptic("sel");
+    const was = S.favs.has(pid);
+    was ? S.favs.delete(pid) : S.favs.add(pid);
+    document.querySelectorAll(`[data-fav="${pid}"]`).forEach((b) => b.classList.toggle("on", !was));
+    if (!was) toast(T("favAdded"));
+    try { const r = await api(`/api/favorites/${pid}`, { method: "POST" }); S.favs = new Set(r.favorites); }
+    catch (e) { toast(e.message, true); }
+  }
+  function updateBadges() {
+    const n = cartCount();
+    const b = document.getElementById("cart-badge");
+    b.textContent = n; b.classList.toggle("hidden", !n);
+    const active = (S.orders || []).some((o) => o.unread || ["new", "accepted", "packing", "shipping"].includes(o.status));
+    document.getElementById("orders-badge").classList.toggle("hidden", !active);
   }
 
-  // ---------------- navigation ----------------
-  const TABS = { menu: "menu", cart: "cart", checkout: "cart", success: "orders", orders: "orders", order: "orders" };
+  // ---------------- mahsulot kartochkasi ----------------
+  function stockLabel(st) {
+    return st === "out" ? `<span class="stock-dot out">${T("outOfStock")}</span>`
+      : st === "low" ? `<span class="stock-dot low">${T("lowStockShort")}</span>` : `<span class="stock-dot">${T("inStock")}</span>`;
+  }
+  function badgesHtml(p) {
+    const b = [];
+    if (p.discount) b.push(`<span class="badge-s sale">-${p.discount}%</span>`);
+    if (p.badges.includes("hit")) b.push(`<span class="badge-s">🔥 HIT</span>`);
+    if (p.badges.includes("new")) b.push(`<span class="badge-s new">NEW</span>`);
+    if (p.badges.includes("top")) b.push(`<span class="badge-s">⭐ TOP</span>`);
+    return b.join("");
+  }
+  function card(p) {
+    const fav = S.favs.has(p.id);
+    return `<article class="card glass" data-go="#p${p.id}">
+      <div class="ph"><img loading="lazy" src="${esc(img(p.image))}" alt="">
+        <div class="badges">${badgesHtml(p)}</div>
+        <button class="fav ${fav ? "on" : ""}" data-fav="${p.id}" aria-label="fav">${ico("heart")}</button>
+        ${p.stock === "out" ? `<div class="out">${T("outOfStock")}</div>` : ""}</div>
+      <div class="meta"><span class="brand">${esc(p.brand)}</span><span class="name">${esc(p.name)}</span>
+        <div class="row"><div class="price-b">${p.old_price ? `<small>${money(p.old_price)}</small>` : p.price_from ? `<span class="from">${T("from")}</span>` : ""}${priceHtml(p.price)}</div>
+        ${p.stock !== "out" ? `<button class="add" data-quick="${p.id}" aria-label="add">${ico("plus")}</button>` : ""}</div>
+      </div></article>`;
+  }
 
-  function go(view, push = true) {
-    if (view === state.view) { window.scrollTo({ top: 0, behavior: "smooth" }); return; }
-    if (push && !["menu", "cart", "orders"].includes(view)) state.history.push(state.view);
-    if (["menu", "cart", "orders"].includes(view)) state.history = [];
-    state.view = view;
-    document.querySelectorAll(".view").forEach((el) => el.classList.toggle("active", el.id === "view-" + view));
-    document.querySelectorAll(".tabbar button").forEach((b) => b.classList.toggle("active", b.dataset.go === TABS[view]));
+  // ---------------- marshrutlash ----------------
+  const TABS = { home: "home", catalog: "catalog", cart: "cart", fav: "fav", compare: "fav", orders: "orders" };
+  function parseRoute() {
+    const h = decodeURIComponent(location.hash.slice(1));
+    if (!h || h === "home") return { name: "home" };
+    if (h.startsWith("catalog")) {
+      const m = h.match(/c(\d+)/), b = h.match(/b(\d+)/);
+      return { name: "catalog", cat: m ? +m[1] : null, brand: b ? +b[1] : null };
+    }
+    if (/^p\d+$/.test(h)) return { name: "product", id: +h.slice(1) };
+    if (h.startsWith("placed/")) return { name: "placed", code: h.slice(7) };
+    if (/^o[A-Z]+-\d+$/.test(h)) return { name: "order", code: h.slice(1) };
+    return { name: ["cart", "checkout", "fav", "compare", "orders"].includes(h) ? h : "home" };
+  }
+  const go = (hash) => { if (location.hash === hash) render(); else location.hash = hash; };
+  function back() { if (history.length > 1) history.back(); else go("#home"); }
+
+  async function render() {
+    clearTimers();
+    closeSheet();
+    const r = parseRoute();
+    const tab = TABS[r.name];
+    dock.querySelectorAll("button").forEach((b) => b.classList.toggle("active", b.dataset.tab === tab));
+    resetDock();
+    const fullscreen = ["product", "checkout", "placed"].includes(r.name);
+    dock.classList.toggle("away", fullscreen);
+    view.classList.toggle("no-dock", fullscreen);
+    if (tg && tg.BackButton) (tab === "home" ? tg.BackButton.hide() : tg.BackButton.show());
+    view.style.animation = "none"; void view.offsetWidth; view.style.animation = "";
     window.scrollTo(0, 0);
-    stopPolling();
-    if (view === "cart") renderCart();
-    if (view === "checkout") renderCheckout();
-    if (view === "orders") loadOrders();
-    updateCartUI();
-    updateBackButton();
-  }
-
-  function back() {
-    if ($("#sheet").classList.contains("open")) return closeSheet();
-    go(state.history.pop() || "menu", false);
-  }
-
-  function updateBackButton() {
-    if (!tg || !tg.BackButton) return;
-    const show = state.history.length > 0 || $("#sheet").classList.contains("open") || state.view !== "menu";
-    show ? tg.BackButton.show() : tg.BackButton.hide();
-  }
-
-  document.addEventListener("click", (e) => {
-    const g = e.target.closest("[data-go]");
-    if (g) { haptic(); go(g.dataset.go); }
-  });
-
-  // ---------------- language ----------------
-  $("#lang-switch").addEventListener("click", async (e) => {
-    const b = e.target.closest("[data-lang]");
-    if (!b || b.dataset.lang === state.lang) return;
-    haptic();
-    try { await api("/api/me/lang", { method: "POST", body: JSON.stringify({ lang: b.dataset.lang }) }); } catch (err) {}
-    await loadMenu();
-  });
-
-  // ---------------- menu ----------------
-  async function loadMenu() {
     try {
-      const data = await api("/api/menu");
-      state.lang = data.lang || "uz";
-      state.texts = data.texts || {};
-      state.categories = data.categories;
-      state.settings = data.settings;
-      state.slots = data.slots || [];
-      state.products = {};
-      data.categories.forEach((c) => c.products.forEach((p) => (state.products[p.id] = { ...p, category: c.name })));
-      state.cart = state.cart.filter((i) => state.products[i.pid] && state.products[i.pid].variants[i.v]);
-      saveCart();
-      applyTexts();
-      renderMenu();
-      updateCartUI();
-      if (state.view === "cart") renderCart();
+      await ({ home: renderHome, catalog: renderCatalog, product: renderProduct, cart: renderCart,
+        checkout: renderCheckout, fav: renderFav, compare: renderCompare, orders: renderOrders,
+        order: renderOrder, placed: renderPlaced }[r.name])(r);
     } catch (e) {
-      $("#menu-list").innerHTML = `<div class="empty"><div class="e-ico">⚠️</div><p>${esc(e.message)}</p>
-        <button class="primary-btn" id="retry">${esc(L("retry"))}</button></div>`;
-      $("#retry").onclick = loadMenu;
+      view.innerHTML = `<div class="empty"><div class="big glass">${ico("alert")}</div><h3>${esc(e.message)}</h3>
+        <button class="btn btn-white" data-act="reload">${T("retry")}</button></div>`;
     }
   }
 
-  function minVariant(p) { return p.variants.reduce((m, v) => (v.price < m.price ? v : m), p.variants[0]); }
-  function qtyInCart(pid) { return state.cart.filter((i) => i.pid === pid).reduce((s, i) => s + i.qty, 0); }
-  function imgStyle(p) { return p.image ? `style="background-image:url('${esc(imgUrl(p.image))}')"` : ""; }
-  const BADGE_ICONS = { hit: "🔥 Hit", new: "🆕", top: "⭐ Top", spicy: "🌶" };
-  function badgesHTML(p) {
-    const b = (p.badges || []).map((k) => `<span class="badge-chip ${k}">${esc(BADGE_ICONS[k] || k)}</span>`);
-    if (p.discount) b.unshift(`<span class="badge-chip sale">-${p.discount}%</span>`);
-    return b.length ? `<div class="badges">${b.join("")}</div>` : "";
+  // ---------------- Dock: macOS magnifikatsiyasi ----------------
+  function resetDock() {
+    const btns = [...dock.querySelectorAll("button")];
+    const ai = btns.findIndex((b) => b.classList.contains("active"));
+    btns.forEach((b, i) => b.style.setProperty("--s", i === ai ? 1.28 : Math.abs(i - ai) === 1 && ai >= 0 ? 1.08 : 1));
   }
-  function priceHTML(v, prefix) {
-    const pre = prefix ? `<small>${esc(L("from"))} </small>` : "";
-    if (v.old_price) return `<span class="old">${money(v.old_price)}</span><span class="new">${pre}${money(v.price)}</span>`;
-    return `<span>${pre}${money(v.price)}</span>`;
+  function magnify(x) {
+    dock.querySelectorAll("button").forEach((b) => {
+      const r = b.getBoundingClientRect();
+      const d = Math.abs(x - (r.left + r.width / 2));
+      b.style.setProperty("--s", (1 + 0.42 * Math.exp(-(d * d) / (2 * 46 * 46))).toFixed(3));
+    });
   }
+  dock.addEventListener("pointermove", (e) => magnify(e.clientX));
+  dock.addEventListener("pointerdown", (e) => magnify(e.clientX));
+  dock.addEventListener("pointerleave", resetDock);
+  dock.addEventListener("pointercancel", resetDock);
+  dock.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-tab]");
+    if (!b) return;
+    haptic("sel");
+    go("#" + b.dataset.tab);
+  });
 
-  function closedText() {
-    const s = state.settings;
-    if (!s.accepting) return L("notAccepting");
-    if (s.is_open) return "";
-    let t = L("closed");
-    if (s.next_open) t += " " + L("opensAt", { time: s.next_open });
-    if (state.slots.length) t += " " + L("laterOnly");
-    return t;
+  // ---------------- BOSH SAHIFA ----------------
+  function topProducts(kind, n = 10) {
+    const all = S.boot.products.filter((p) => p.stock !== "out");
+    if (kind === "deals") return all.filter((p) => p.discount).slice(0, n);
+    if (kind === "new") return [...all].sort((a, b) => (b.badges.includes("new") - a.badges.includes("new")) || b.created_at.localeCompare(a.created_at)).slice(0, n);
+    return [...all].sort((a, b) => (b.badges.includes("hit") - a.badges.includes("hit")) || b.sold - a.sold).slice(0, n);
   }
-
-  function renderMenu() {
-    const banner = $("#closed-banner");
-    const ct = closedText();
-    banner.textContent = ct;
-    banner.classList.toggle("hidden", !ct);
-
-    $("#cats").innerHTML = state.categories
-      .map((c, i) => `<button class="cat-chip ${i === 0 ? "active" : ""}" data-cat="${c.id}">${esc(c.emoji)} ${esc(c.name)}</button>`)
-      .join("");
-    $("#cats").classList.toggle("hidden", !!state.query);
-
-    if (!state.categories.length) {
-      $("#menu-list").innerHTML = `<div class="empty"><div class="e-ico">🍽</div><p>${esc(L("emptyMenu"))}</p></div>`;
-      return;
+  function rail(title, items, hash) {
+    if (!items.length) return "";
+    return `<div class="section-h"><h2>${title}</h2><button data-go="${hash}">${T("seeAll")}${ico("chev")}</button></div>
+      <div class="rail">${items.map(card).join("")}</div>`;
+  }
+  function renderHome() {
+    const b = S.boot.brand;
+    const heroes = S.boot.products.filter((p) => p.stock !== "out" && (p.discount || p.badges.includes("top") || p.badges.includes("hit"))).slice(0, 5);
+    view.innerHTML = `
+      <div class="brandbar">${b.logo ? `<img class="logo" src="${esc(img(b.logo))}" alt="${esc(b.name)}">` : `<h1>${esc(b.name)}</h1>`}
+        <span class="spacer"></span>
+        <div class="lang glass"><button data-lang="uz" class="${S.lang === "uz" ? "on" : ""}">UZ</button><button data-lang="ru" class="${S.lang === "ru" ? "on" : ""}">RU</button></div></div>
+      <label class="search glass">${ico("search")}<input id="home-q" type="search" placeholder="${esc(T("search"))}" autocomplete="off"></label>
+      ${S.boot.settings.accepting ? "" : `<div class="note glass">${ico("alert")}<span>${T("notAccepting")}</span></div>`}
+      ${heroes.length ? `<div class="rail hero-rail" id="hero">${heroes.map((p) => `
+        <div class="hero glass" data-go="#p${p.id}" style="width:calc(100vw - 32px);max-width:608px;flex:none;scroll-snap-align:center">
+          <div><div class="eyebrow">${p.discount ? `-${p.discount}% · ` : ""}${esc(p.brand)}</div><h3>${esc(p.name)}</h3>
+            <span class="price">${p.price_from ? T("from") + " " : ""}${money(p.price)}</span>${p.old_price ? `<span class="old">${money(p.old_price)}</span>` : ""}
+            <div><span class="cta">${T("show")}${ico("chev")}</span></div></div>
+          <img src="${esc(img(p.image))}" alt=""></div>`).join("")}</div>
+        <div class="hero-dots" id="hero-dots">${heroes.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}
+      <div class="section-h"><h2>${T("categories")}</h2></div>
+      <div class="cats">${S.boot.categories.map((c) => `<button class="cat glass" data-go="#catalog/c${c.id}"><span class="emoji">${esc(c.emoji || "📦")}</span><b>${esc(c.name)}</b><small>${c.count}</small></button>`).join("")}</div>
+      ${S.boot.brands.length ? `<div class="section-h"><h2>${T("brands")}</h2></div>
+        <div class="chips">${S.boot.brands.map((x) => `<button class="chip glass" data-go="#catalog/b${x.id}">${esc(x.name)}</button>`).join("")}</div>` : ""}
+      ${rail("🔥 " + T("hits"), topProducts("hits"), "#catalog")}
+      ${rail("% " + T("deals"), topProducts("deals"), "#catalog")}
+      ${rail("✨ " + T("newArrivals"), topProducts("new"), "#catalog")}
+      <div class="perks">
+        <div class="perk glass">${ico("shield")}${T("perk1")}</div>
+        <div class="perk glass">${ico("truck")}${T("perk2")}</div>
+        <div class="perk glass">${ico("chat")}${T("perk3")}</div></div>
+      ${S.boot.settings.phone ? `<p class="center muted" style="margin-top:22px;font-size:13px">${T("questions")}: <a href="tel:${esc(S.boot.settings.phone.replace(/\s/g, ""))}">${esc(S.boot.settings.phone)}</a></p>` : ""}`;
+    const q = document.getElementById("home-q");
+    q.addEventListener("keydown", (e) => { if (e.key === "Enter" && q.value.trim()) { S.f.q = q.value.trim(); go("#catalog"); } });
+    q.addEventListener("input", () => { if (q.value.trim().length >= 2) { S.f.q = q.value.trim(); go("#catalog"); } });
+    const hero = document.getElementById("hero");
+    if (hero && heroes.length > 1) {
+      const dots = [...document.querySelectorAll("#hero-dots i")];
+      const sync = () => { const i = Math.round(hero.scrollLeft / hero.clientWidth); S.heroIdx = i; dots.forEach((d, j) => d.classList.toggle("on", i === j)); };
+      hero.addEventListener("scroll", () => requestAnimationFrame(sync), { passive: true });
+      S.timers.push(setInterval(() => { const i = (S.heroIdx + 1) % heroes.length; hero.scrollTo({ left: i * hero.clientWidth, behavior: "smooth" }); }, 4500));
     }
-    if (state.query) {
-      const q = state.query.toLowerCase();
-      const found = Object.values(state.products).filter((p) => p.search.includes(q) || p.name.toLowerCase().includes(q));
-      $("#menu-list").innerHTML = found.length
-        ? `<div class="grid">${found.map(productCard).join("")}</div>`
-        : `<div class="empty"><div class="e-ico">🔍</div><p>${esc(L("searchEmpty"))}</p></div>`;
-      return;
-    }
-    $("#menu-list").innerHTML = state.categories.map((c) => `
-      <section class="cat-section" id="cat-${c.id}" data-cat="${c.id}">
-        <div class="cat-title">${esc(c.emoji)} ${esc(c.name)}</div>
-        <div class="grid">${c.products.map(productCard).join("")}</div>
-      </section>`).join("");
-    observeSections();
   }
 
-  function productCard(p) {
-    const q = qtyInCart(p.id);
-    return `
-      <div class="product" data-pid="${p.id}">
-        <div class="img" ${imgStyle(p)}>${badgesHTML(p)}${q ? `<span class="qty-pill">${q}</span>` : ""}</div>
-        <div class="body">
-          <div class="name">${esc(p.name)}</div>
-          ${p.description ? `<div class="desc">${esc(p.description)}</div>` : ""}
-          <div class="foot">
-            <div class="price">${priceHTML(minVariant(p), p.variants.length > 1)}</div>
-            <button class="add-btn" data-quick="${p.id}" aria-label="+">+</button>
-          </div>
-        </div>
-      </div>`;
+  // ---------------- KATALOG ----------------
+  function filtered() {
+    const f = S.f;
+    const words = f.q.toLowerCase().split(/\s+/).filter(Boolean);
+    let items = S.boot.products.filter((p) => (!f.cat || p.category_id === f.cat)
+      && (!f.brands.length || f.brands.includes(p.brand_id))
+      && (!words.length || words.every((w) => p.search.includes(w)))
+      && (!f.stock || p.stock !== "out") && (!f.sale || p.discount)
+      && (!f.min || p.price >= +f.min) && (!f.max || p.price <= +f.max));
+    const sorters = { popular: (a, b) => b.sold - a.sold, new: (a, b) => b.created_at.localeCompare(a.created_at),
+      cheap: (a, b) => a.price - b.price, expensive: (a, b) => b.price - a.price };
+    items.sort((a, b) => ((a.stock === "out") - (b.stock === "out")) || sorters[f.sort](a, b));
+    return items;
   }
-
-  $("#menu-list").addEventListener("click", (e) => {
-    const quick = e.target.closest("[data-quick]");
-    const card = e.target.closest(".product");
-    if (quick) {
-      e.stopPropagation();
-      const p = state.products[+quick.dataset.quick];
-      if (p.variants.length === 1) { addToCart(p.id, 0, 1); return; }
-      openSheet(p.id);
-      return;
-    }
-    if (card) openSheet(+card.dataset.pid);
-  });
-
-  $("#cats").addEventListener("click", (e) => {
-    const chip = e.target.closest(".cat-chip");
-    if (!chip) return;
-    haptic();
-    const sec = document.getElementById("cat-" + chip.dataset.cat);
-    window.scrollTo({ top: sec.getBoundingClientRect().top + window.scrollY - 64, behavior: "smooth" });
-    setActiveChip(chip.dataset.cat);
-  });
-
-  let searchTimer;
-  $("#search").addEventListener("input", (e) => {
-    clearTimeout(searchTimer);
-    searchTimer = setTimeout(() => {
-      state.query = e.target.value.trim();
-      $("#search-clear").classList.toggle("hidden", !state.query);
-      renderMenu();
-    }, 150);
-  });
-  $("#search-clear").addEventListener("click", () => {
-    $("#search").value = ""; state.query = "";
-    $("#search-clear").classList.add("hidden");
-    renderMenu();
-  });
-
-  function setActiveChip(id) {
-    document.querySelectorAll(".cat-chip").forEach((c) => {
-      const on = c.dataset.cat === String(id);
-      c.classList.toggle("active", on);
-      if (on) c.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  function renderCatalog(r) {
+    if (r.cat !== null && r.cat !== undefined) S.f.cat = r.cat;
+    if (r.brand) { S.f.brands = [r.brand]; S.f.cat = 0; }
+    const f = S.f;
+    const activeFilters = f.brands.length + (f.stock ? 1 : 0) + (f.sale ? 1 : 0) + (f.min || f.max ? 1 : 0);
+    view.innerHTML = `
+      <div class="topbar"><h1>${T("tabCatalog")}</h1>${S.compare.length ? `<button class="icon-btn glass" data-go="#compare">${ico("compare")}</button>` : ""}</div>
+      <div class="search-row"><label class="search glass">${ico("search")}<input id="q" type="search" value="${esc(f.q)}" placeholder="${esc(T("search"))}" autocomplete="off"></label>
+        <button class="icon-btn glass" data-act="filters" style="width:50px;height:50px">${ico("filter")}${activeFilters ? `<em class="badge" style="top:-2px;right:-2px">${activeFilters}</em>` : ""}</button></div>
+      <div class="chips" style="margin-top:14px">
+        <button class="chip glass ${!f.cat ? "on" : ""}" data-cat="0">${T("allProducts")}</button>
+        ${S.boot.categories.map((c) => `<button class="chip glass ${f.cat === c.id ? "on" : ""}" data-cat="${c.id}">${esc(c.emoji)} ${esc(c.name)}</button>`).join("")}</div>
+      <div class="chips" style="margin-top:8px">
+        ${["popular", "new", "cheap", "expensive"].map((s) => `<button class="chip glass ${f.sort === s ? "on" : ""}" data-sort="${s}">${T("sort" + s[0].toUpperCase() + s.slice(1))}</button>`).join("")}</div>
+      <p class="muted" id="found" style="margin:14px 2px 10px;font-size:13px"></p>
+      <div class="grid" id="grid"></div>`;
+    const draw = () => {
+      const items = filtered();
+      document.getElementById("found").textContent = T("found", { n: items.length });
+      document.getElementById("grid").innerHTML = items.length ? items.map(card).join("")
+        : `<div class="empty" style="grid-column:1/-1"><div class="big glass">${ico("search")}</div><h3>${T("searchEmpty")}</h3></div>`;
+    };
+    draw();
+    const q = document.getElementById("q");
+    q.addEventListener("input", () => { S.f.q = q.value; draw(); });
+    if (f.q) { q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+    view.querySelectorAll("[data-cat]").forEach((b) => b.addEventListener("click", () => { S.f.cat = +b.dataset.cat; haptic("sel"); renderCatalog({}); }));
+    view.querySelectorAll("[data-sort]").forEach((b) => b.addEventListener("click", () => { S.f.sort = b.dataset.sort; haptic("sel"); renderCatalog({}); }));
+  }
+  function filterSheet() {
+    const f = S.f;
+    openSheet(`<h3>${T("filters")}</h3>
+      <div class="field"><span>${T("price")}</span><div class="range">
+        <input class="input" id="fmin" inputmode="numeric" placeholder="${T("priceFrom")}" value="${esc(f.min)}">
+        <input class="input" id="fmax" inputmode="numeric" placeholder="${T("priceTo")}" value="${esc(f.max)}"></div></div>
+      <div class="field"><span>${T("brands")}</span><div class="chips" style="flex-wrap:wrap;margin:0;padding:0">
+        ${S.boot.brands.map((b) => `<button class="chip glass ${f.brands.includes(b.id) ? "on" : ""}" data-fb="${b.id}">${esc(b.name)}</button>`).join("")}</div></div>
+      <label class="check"><input type="checkbox" id="fstock" ${f.stock ? "checked" : ""}>${T("inStockOnly")}</label>
+      <label class="check"><input type="checkbox" id="fsale" ${f.sale ? "checked" : ""}>${T("withDiscount")}</label>
+      <div style="display:flex;gap:10px;margin-top:16px"><button class="btn btn-ghost glass" data-fx="reset" style="flex:1">${T("reset")}</button>
+        <button class="btn btn-primary" data-fx="apply" style="flex:2">${T("show")}</button></div>`, (el) => {
+      const sel = new Set(f.brands);
+      el.querySelectorAll("[data-fb]").forEach((b) => b.addEventListener("click", () => {
+        const id = +b.dataset.fb; sel.has(id) ? sel.delete(id) : sel.add(id); b.classList.toggle("on"); haptic("sel");
+      }));
+      el.querySelector('[data-fx="reset"]').addEventListener("click", () => {
+        Object.assign(S.f, { brands: [], min: "", max: "", stock: false, sale: false }); closeSheet(); renderCatalog({});
+      });
+      el.querySelector('[data-fx="apply"]').addEventListener("click", () => {
+        const num = (id) => el.querySelector(id).value.replace(/\D/g, "");
+        Object.assign(S.f, { brands: [...sel], min: num("#fmin"), max: num("#fmax"),
+          stock: el.querySelector("#fstock").checked, sale: el.querySelector("#fsale").checked });
+        closeSheet(); renderCatalog({});
+      });
     });
   }
 
-  let observer;
-  function observeSections() {
-    if (!("IntersectionObserver" in window)) return;
-    observer && observer.disconnect();
-    observer = new IntersectionObserver((entries) => {
-      entries.forEach((en) => { if (en.isIntersecting) setActiveChip(en.target.dataset.cat); });
-    }, { rootMargin: "-30% 0px -60% 0px" });
-    document.querySelectorAll(".cat-section").forEach((s) => observer.observe(s));
+  // ---------------- MAHSULOT ----------------
+  async function loadProduct(id) {
+    if (!S.pcache[id]) S.pcache[id] = await api(`/api/products/${id}`);
+    return S.pcache[id];
+  }
+  async function renderProduct(r) {
+    view.innerHTML = `<div class="sk" style="height:100vw;max-height:520px;margin:-14px -16px 0;border-radius:0 0 34px 34px"></div>
+      <div class="sk" style="height:28px;width:60%;margin-top:22px"></div><div class="sk" style="height:40px;width:40%;margin-top:14px"></div>`;
+    const { product: p, alerts } = await loadProduct(r.id);
+    const variants = p.variants;
+    let v = variants.find((x) => x.stock !== "out") || variants[0];
+    let sel = v ? [...v.vals] : [];
+    let qty = 1;
+    const imgsFor = (vals) => {
+      const own = p.images.filter((i) => i.color && vals.includes(i.color));
+      const common = p.images.filter((i) => !i.color);
+      const list = own.concat(common);
+      return (list.length ? list : p.images).map((i) => i.path);
+    };
+    const findVariant = (vals) => variants.find((x) => x.vals.every((val, i) => val === vals[i]));
+    const draw = () => {
+      v = findVariant(sel) || v;
+      const images = imgsFor(sel);
+      const out = !v || v.stock === "out";
+      const inCmp = S.compare.includes(p.id);
+      view.innerHTML = `
+        <div class="pd-top"><button class="icon-btn glass" data-act="back">${ico("back")}</button>
+          <div class="acts"><button class="icon-btn glass ${inCmp ? "on" : ""}" data-act="cmp">${ico("compare")}</button>
+          <button class="icon-btn glass ${S.favs.has(p.id) ? "on" : ""}" data-fav="${p.id}">${ico("heart")}</button></div></div>
+        <div class="gallery"><div class="track" id="gal">${images.map((s) => `<img src="${esc(img(s))}" alt="">`).join("")}</div>
+          ${images.length > 1 ? `<div class="dots">${images.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}</div>
+        <div class="pd-head"><div class="brand">${esc(p.brand)}</div><h1>${esc(p.name)}</h1>
+          <div class="pd-tags">
+            ${out ? `<span class="tag glass out">${T("outOfStock")}</span>` : v.stock === "low" ? `<span class="tag glass low">${ico("bolt")}${v.left ? T("lowStock", { n: v.left }) : T("lowStockShort")}</span>` : `<span class="tag glass ok">${ico("check")}${T("inStock")}</span>`}
+            ${p.warranty ? `<span class="tag glass">${ico("shield")}${T("warranty")}: ${esc(p.warranty)}</span>` : ""}
+            ${p.badges.includes("hit") ? `<span class="tag glass">🔥 Hit</span>` : ""}</div></div>
+        <div class="pd-price"><b>${money(v ? v.price : p.price)}</b>${v && v.old_price ? `<s>${money(v.old_price)}</s><span class="save">-${p.discount}%</span>` : ""}</div>
+        ${p.options.map((o, oi) => `<div class="opt"><div class="opt-h">${esc(o.name)}: <b>${esc((o.values.find((x) => x.value === sel[oi]) || {}).label || "")}</b></div>
+          <div class="opt-vals">${o.values.map((val) => {
+            const test = sel.slice(); test[oi] = val.value;
+            const exact = findVariant(test);
+            const any = variants.some((x) => x.vals[oi] === val.value);
+            if (!any) return "";
+            const na = !exact || exact.stock === "out";
+            const pic = o.is_color ? (p.images.find((i) => i.color === val.value) || {}).path : "";
+            return `<button class="opt-v glass ${o.is_color && pic ? "color" : ""} ${sel[oi] === val.value ? "on" : ""} ${na ? "na" : ""}" data-oi="${oi}" data-val="${esc(val.value)}">
+              ${pic ? `<img src="${esc(img(pic))}" alt="">` : ""}${esc(val.label)}</button>`;
+          }).join("")}</div></div>`).join("")}
+        ${p.specs.length ? `<div class="card-box glass"><h3>${ico("grid")}${T("specs")}</h3><table class="specs" id="specs">
+          ${p.specs.map((s, i) => `<tr class="${i >= 6 ? "hidden more" : ""}"><td>${esc(s.k)}</td><td>${esc(s.v)}</td></tr>`).join("")}</table>
+          ${p.specs.length > 6 ? `<button class="link-btn" data-act="allspecs" style="margin-top:10px">${T("showAll")} (${p.specs.length})</button>` : ""}</div>` : ""}
+        ${p.description ? `<div class="card-box glass"><h3>${ico("box")}${T("description")}</h3><p class="desc">${esc(p.description)}</p></div>` : ""}
+        <div class="buybar glass">
+          ${out ? `<div class="total"><small>${T("outOfStock")}</small><b>${money(v ? v.price : p.price)}</b></div>
+              <button class="btn btn-white" data-act="notify" ${alerts.includes(v && v.id) ? "disabled" : ""}>${ico("bell")}${T("notify")}</button>`
+            : `<div class="qty glass"><button data-q="-1">${ico("minus")}</button><span id="qn">${qty}</span><button data-q="1">${ico("plus")}</button></div>
+              <button class="btn btn-primary two" data-act="buy">${ico("cart")}<span><b>${T("addToCart")}</b><small id="qt">${money(v.price * qty)}</small></span></button>`}</div>`;
+      const gal = document.getElementById("gal");
+      const dots = [...view.querySelectorAll(".gallery .dots i")];
+      gal.addEventListener("scroll", () => { const i = Math.round(gal.scrollLeft / gal.clientWidth); dots.forEach((d, j) => d.classList.toggle("on", i === j)); }, { passive: true });
+      view.querySelectorAll("[data-oi]").forEach((b) => b.addEventListener("click", () => {
+        const oi = +b.dataset.oi, val = b.dataset.val;
+        const test = sel.slice(); test[oi] = val;
+        if (!findVariant(test)) {
+          // shu qiymatli eng mos (sotuvdagi) variantga o'tamiz
+          const alt = variants.filter((x) => x.vals[oi] === val).sort((a, c) => (a.stock === "out") - (c.stock === "out"))[0];
+          sel = alt ? [...alt.vals] : test;
+        } else sel = test;
+        qty = 1; haptic("sel"); draw();
+      }));
+      view.querySelectorAll("[data-q]").forEach((b) => b.addEventListener("click", () => {
+        const max = v.left || 20;
+        qty = Math.max(1, Math.min(max, qty + +b.dataset.q));
+        haptic("sel");
+        document.getElementById("qn").textContent = qty;
+        document.getElementById("qt").textContent = money(v.price * qty);
+      }));
+      const act = (name, fn) => { const el = view.querySelector(`[data-act="${name}"]`); el && el.addEventListener("click", fn); };
+      act("buy", () => addToCart(v.id, qty, v.left || 20));
+      act("cmp", () => { toggleCompare(p.id) && draw(); });
+      act("allspecs", (e) => { view.querySelectorAll("#specs .more").forEach((x) => x.classList.remove("hidden")); e.target.remove(); });
+      act("notify", async () => {
+        try { await api("/api/alerts", { method: "POST", body: { variant_id: v.id } }); alerts.push(v.id); toast("🔔 " + T("notifyOn")); draw(); }
+        catch (e) { toast(e.message, true); }
+      });
+    };
+    draw();
   }
 
-  // ---------------- product sheet ----------------
-  let sheetState = null;
-
-  function openSheet(pid) {
-    sheetState = { pid, v: 0, qty: 1 };
-    renderSheet();
-    $("#sheet-backdrop").classList.remove("hidden");
-    requestAnimationFrame(() => $("#sheet").classList.add("open"));
-    haptic();
-    updateBackButton();
-  }
-
-  function renderSheet() {
-    const p = state.products[sheetState.pid];
-    const v = p.variants[sheetState.v];
-    $("#sheet").innerHTML = `
-      <div class="s-img" ${imgStyle(p)}>${badgesHTML(p)}<button class="s-close" data-close>✕</button></div>
-      <div class="s-body">
-        <h3>${esc(p.name)}</h3>
-        <p class="s-desc">${esc(p.description || p.category)}</p>
-        ${p.variants.length > 1 ? `<div class="variants">${p.variants.map((x, i) => `
-          <button class="variant ${i === sheetState.v ? "active" : ""}" data-v="${i}">
-            <b>${esc(x.name || "Standart")}</b><small class="vprice">${priceHTML(x)}</small>
-          </button>`).join("")}</div>` : `<div class="sheet-price">${priceHTML(v)}</div>`}
-        <div class="sheet-actions">
-          <div class="stepper">
-            <button data-step="-1">−</button><span>${sheetState.qty}</span><button data-step="1">+</button>
-          </div>
-          <button class="primary-btn" data-add>${esc(L("add"))} · ${money(v.price * sheetState.qty)}</button>
-        </div>
-      </div>`;
-  }
-
-  $("#sheet").addEventListener("click", (e) => {
-    if (e.target.closest("[data-close]")) return closeSheet();
-    const v = e.target.closest("[data-v]");
-    if (v) { sheetState.v = +v.dataset.v; haptic(); return renderSheet(); }
-    const st = e.target.closest("[data-step]");
-    if (st) { sheetState.qty = Math.max(1, Math.min(50, sheetState.qty + +st.dataset.step)); haptic(); return renderSheet(); }
-    if (e.target.closest("[data-add]")) { addToCart(sheetState.pid, sheetState.v, sheetState.qty); closeSheet(); }
-  });
-  $("#sheet-backdrop").addEventListener("click", closeSheet);
-
-  function closeSheet() {
-    $("#sheet").classList.remove("open");
-    $("#sheet-backdrop").classList.add("hidden");
-    setTimeout(updateBackButton, 0);
-  }
-
-  // ---------------- cart ----------------
-  function addToCart(pid, v, qty) {
-    const ex = state.cart.find((i) => i.pid === pid && i.v === v);
-    if (ex) ex.qty = Math.min(50, ex.qty + qty);
-    else state.cart.push({ pid, v, qty });
-    saveCart();
-    notifyHaptic("success");
-    toast(L("added"));
-    refreshCardBadge(pid);
-    updateCartUI();
-  }
-
-  function refreshCardBadge(pid) {
-    document.querySelectorAll(`.product[data-pid="${pid}"]`).forEach((card) => { card.outerHTML = productCard(state.products[pid]); });
-  }
-
-  function cartTotals() {
-    const subtotal = state.cart.reduce((s, i) => s + state.products[i.pid].variants[i.v].price * i.qty, 0);
-    const count = state.cart.reduce((s, i) => s + i.qty, 0);
-    return { subtotal, count };
-  }
-
-  function updateCartUI() {
-    const { count, subtotal } = cartTotals();
-    const badge = $("#cart-badge");
-    badge.textContent = count;
-    badge.classList.toggle("hidden", !count);
-    const showBar = count > 0 && state.view === "menu";
-    $("#cart-bar").classList.toggle("hidden", !showBar);
-    if (showBar) {
-      $("#cart-bar-count").textContent = count + " " + L("pcs");
-      $("#cart-bar-total").textContent = money(subtotal);
-    }
-  }
-  $("#cart-bar").addEventListener("click", () => { haptic(); go("cart"); });
-
-  function canCheckout() {
-    return cartTotals().count > 0 && state.settings.accepting && (state.settings.is_open || state.slots.length > 0);
-  }
-
-  function renderCart() {
-    const list = $("#cart-list");
-    $("#clear-cart").classList.toggle("hidden", !state.cart.length);
-    if (!state.cart.length) {
-      list.innerHTML = `<div class="empty"><div class="e-ico">🛒</div><p>${esc(L("emptyCart"))}</p>
-        <button class="primary-btn" data-go="menu">${esc(L("toMenu"))}</button></div>`;
-      $("#cart-summary").innerHTML = "";
-      $("#to-checkout").classList.add("hidden");
+  // ---------------- SAVAT ----------------
+  async function renderCart() {
+    if (!S.cart.length) {
+      view.innerHTML = `<div class="topbar"><h1>${T("cart")}</h1></div>
+        <div class="empty"><div class="big glass">${ico("cart")}</div><h3>${T("emptyCart")}</h3><p>${T("emptyCartSub")}</p>
+        <button class="btn btn-white" data-go="#catalog">${T("toCatalog")}</button></div>`;
       return;
     }
-    list.innerHTML = state.cart.map((i, idx) => {
-      const p = state.products[i.pid];
-      const v = p.variants[i.v];
-      return `
-        <div class="cart-item">
-          <div class="thumb" ${imgStyle(p)}></div>
-          <div class="info">
-            <b>${esc(p.name)}</b>${v.name ? `<small>${esc(v.name)}</small>` : ""}
-            <div class="p">${v.old_price ? `<span class="old">${money(v.old_price * i.qty)}</span>` : ""}${money(v.price * i.qty)}</div>
-          </div>
-          <div class="stepper sm">
-            <button data-cq="${idx}" data-d="-1">−</button><span>${i.qty}</span><button data-cq="${idx}" data-d="1">+</button>
-          </div>
-        </div>`;
-    }).join("");
-    const { subtotal } = cartTotals();
-    const s = state.settings;
-    let html = `<div class="row total"><span>${esc(L("items"))}</span><b>${money(subtotal)}</b></div>`;
-    if (s.delivery_enabled && s.min_order && subtotal < s.min_order) {
-      html += `<div class="note">${esc(L("minOrder", { sum: money(s.min_order), left: money(s.min_order - subtotal) }))}</div>`;
-    }
-    const ct = closedText();
-    if (ct) html += `<div class="note">${esc(ct)}</div>`;
-    $("#cart-summary").innerHTML = html;
-    const btn = $("#to-checkout");
-    btn.classList.remove("hidden");
-    btn.disabled = !canCheckout();
+    view.innerHTML = `<div class="topbar"><h1>${T("cart")}</h1></div>${'<div class="sk" style="height:98px;margin-bottom:10px"></div>'.repeat(Math.min(3, S.cart.length))}`;
+    const { items } = await api("/api/cart", { method: "POST", body: { items: S.cart } });
+    const info = Object.fromEntries(items.map((i) => [i.variant_id, i]));
+    // ombordagi qoldiqqa moslash
+    let changed = false;
+    S.cart = S.cart.filter((c) => info[c.variant_id]);
+    S.cart.forEach((c) => { const i = info[c.variant_id]; if (!i.gone && c.qty > i.stock) { c.qty = Math.max(1, i.stock); changed = true; } });
+    saveCart();
+    if (changed) toast(T("maxQty"));
+    const draw = () => {
+      const live = S.cart.filter((c) => !info[c.variant_id].gone);
+      const subtotal = live.reduce((a, c) => a + info[c.variant_id].price * c.qty, 0);
+      const minOrder = S.boot.settings.min_order;
+      view.innerHTML = `<div class="topbar"><h1>${T("cart")}</h1><button class="link-btn" data-act="clear">${T("clear")}</button></div>
+        ${S.cart.map((c) => { const i = info[c.variant_id]; return `<div class="ci glass ${i.gone ? "gone" : ""}">
+          <img src="${esc(img(i.image))}" alt="" data-go="#p${i.product_id || ""}">
+          <div class="info"><b>${esc(i.name || "—")}</b><small>${esc(i.label || "")}${i.gone ? " · " + T("outOfStock") : i.low ? " · " + T("lowStock", { n: i.stock }) : ""}</small>
+            <div class="row"><div class="price-b">${i.old_price ? `<small>${money(i.old_price * c.qty)}</small>` : ""}${money((i.price || 0) * c.qty)}</div>
+            ${i.gone ? `<button class="icon-btn glass" data-rm="${c.variant_id}">${ico("trash")}</button>`
+              : `<div class="qty glass"><button data-cq="${c.variant_id}:-1">${ico(c.qty === 1 ? "trash" : "minus")}</button><span>${c.qty}</span><button data-cq="${c.variant_id}:1">${ico("plus")}</button></div>`}</div></div></div>`; }).join("")}
+        <div class="summary glass"><div class="sum-row"><span>${T("items")}</span><b>${money(subtotal)}</b></div>
+          <div class="sum-row total"><span>${T("total")}</span><b>${money(subtotal)}</b></div></div>
+        ${minOrder && subtotal < minOrder ? `<div class="note glass">${ico("alert")}<span>${T("minOrder", { sum: money(minOrder), left: money(minOrder - subtotal) })}</span></div>` : ""}
+        ${!S.boot.settings.accepting ? `<div class="note glass">${ico("alert")}<span>${T("notAccepting")}</span></div>` : ""}
+        <button class="btn btn-primary btn-block" style="margin-top:16px" data-go="#checkout" ${!live.length || !S.boot.settings.accepting || (minOrder && subtotal < minOrder) ? "disabled" : ""}>${T("checkout")} · ${money(subtotal)}</button>`;
+      view.querySelectorAll("[data-cq]").forEach((b) => b.addEventListener("click", () => {
+        const [vid, d] = b.dataset.cq.split(":").map(Number);
+        const c = S.cart.find((x) => x.variant_id === vid);
+        const max = Math.min(20, info[vid].stock);
+        if (d > 0 && c.qty >= max) { toast(T("maxQty"), true); return; }
+        c.qty += d; if (c.qty <= 0) S.cart = S.cart.filter((x) => x !== c);
+        haptic("sel"); saveCart(); S.cart.length ? draw() : renderCart();
+      }));
+      view.querySelectorAll("[data-rm]").forEach((b) => b.addEventListener("click", () => {
+        S.cart = S.cart.filter((x) => x.variant_id !== +b.dataset.rm); saveCart(); S.cart.length ? draw() : renderCart();
+      }));
+      const clr = view.querySelector('[data-act="clear"]');
+      clr && clr.addEventListener("click", () => confirmDo(T("clearConfirm"), () => { S.cart = []; saveCart(); renderCart(); }));
+    };
+    draw();
   }
-  $("#to-checkout").addEventListener("click", () => { haptic(); go("checkout"); });
-
-  $("#cart-list").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-cq]");
-    if (!b) return;
-    const item = state.cart[+b.dataset.cq];
-    item.qty = Math.min(50, item.qty + +b.dataset.d);
-    if (item.qty <= 0) state.cart.splice(+b.dataset.cq, 1);
-    haptic();
-    saveCart(); renderCart(); updateCartUI(); refreshCardBadge(item.pid);
-  });
-
-  function confirmDialog(text, cb) {
+  function confirmDo(text, cb) {
     if (tg && tg.showConfirm && initData) tg.showConfirm(text, (ok) => ok && cb());
     else if (confirm(text)) cb();
   }
 
-  $("#clear-cart").addEventListener("click", () => confirmDialog(L("clearConfirm"), () => {
-    const pids = state.cart.map((i) => i.pid);
-    state.cart = []; saveCart(); renderCart(); updateCartUI();
-    pids.forEach(refreshCardBadge);
-  }));
-
-  // ---------------- checkout ----------------
-  function formatLocal(digits) {
-    const d = digits.slice(0, 9);
-    return [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean).join(" ");
-  }
-  function localDigits(stored) {
-    const d = String(stored || "").replace(/\D/g, "");
-    return d.length === 12 && d.startsWith("998") ? d.slice(3) : d.slice(-9);
-  }
-  const phoneInput = $("#f-phone");
-  phoneInput.addEventListener("input", () => {
-    const el = phoneInput;
-    const caret = el.selectionStart ?? el.value.length;
-    const digitsBefore = el.value.slice(0, caret).replace(/\D/g, "").length;
-    const formatted = formatLocal(el.value.replace(/\D/g, ""));
-    el.value = formatted;
-    let pos = 0, seen = 0;
-    while (pos < formatted.length && seen < digitsBefore) { if (/\d/.test(formatted[pos])) seen++; pos++; }
-    try { el.setSelectionRange(pos, pos); } catch (e) {}
-  });
-  phoneInput.addEventListener("paste", (e) => {
-    const text = (e.clipboardData || window.clipboardData).getData("text") || "";
-    let d = text.replace(/\D/g, "");
-    if (d.length === 12 && d.startsWith("998")) d = d.slice(3);
-    if (d.length > 9) d = d.slice(-9);
-    e.preventDefault();
-    phoneInput.value = formatLocal(d);
-  });
-  const phoneValue = () => "+998" + phoneInput.value.replace(/\D/g, "");
-
-  function rawItems() { return state.cart.map((i) => ({ product_id: i.pid, variant: i.v, qty: i.qty })); }
-
-  function renderCheckout() {
-    if (!state.cart.length) return go("cart", false);
-    const s = state.settings;
-    const me = state.me || {};
-    const tgUser = tg && tg.initDataUnsafe && tg.initDataUnsafe.user;
-    if (!$("#f-name").value) $("#f-name").value = me.full_name || (tgUser ? [tgUser.first_name, tgUser.last_name].filter(Boolean).join(" ") : "");
-    if (!phoneInput.value && me.phone) phoneInput.value = formatLocal(localDigits(me.phone));
-    if (!$("#f-address").value && me.address) $("#f-address").value = me.address;
-
-    // buyurtma turi
-    if (!s[state.co.type + "_enabled"]) state.co.type = s.delivery_enabled ? "delivery" : "pickup";
-    $("#type-seg").classList.toggle("hidden", !(s.delivery_enabled && s.pickup_enabled));
-    // vaqt
-    if (!s.is_open) state.co.time = "later";
-    renderType();
-    renderTime();
-    $("#form-error").classList.add("hidden");
-    refreshQuote();
-  }
-
-  function renderType() {
-    document.querySelectorAll("#type-seg button").forEach((b) => b.classList.toggle("active", b.dataset.type === state.co.type));
-    const pickup = state.co.type === "pickup";
-    $("#delivery-block").classList.toggle("hidden", pickup);
-    const box = $("#pickup-block");
-    box.classList.toggle("hidden", !pickup);
-    if (pickup) box.innerHTML = `<b>${esc(L("pickupFrom"))}</b>${state.settings.cafe_address ? `<div>📍 ${esc(state.settings.cafe_address)}</div>` : ""}${mapLink()}`;
-  }
-
-  $("#type-seg").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-type]");
-    if (!b) return;
-    haptic();
-    state.co.type = b.dataset.type;
-    renderType();
-    refreshQuote();
-  });
-
-  function mapLink() {
-    const url = state.settings.cafe_map_url;
-    return url ? `<a class="map-link" href="${esc(url)}" data-map target="_blank" rel="noopener">🗺 ${esc(L("openMap"))}</a>` : "";
-  }
-  document.addEventListener("click", (e) => {
-    const a = e.target.closest("a[data-map]");
-    if (!a) return;
-    e.preventDefault();
-    if (tg && tg.openLink) tg.openLink(a.href); else window.open(a.href, "_blank", "noopener");
-  });
-
-  function renderTime() {
-    const asapBtn = document.querySelector('#time-seg [data-time="asap"]');
-    asapBtn.disabled = !state.settings.is_open;
-    document.querySelectorAll("#time-seg button").forEach((b) => b.classList.toggle("active", b.dataset.time === state.co.time));
-    const picker = $("#slot-picker");
-    picker.classList.toggle("hidden", state.co.time !== "later");
-    if (state.co.time !== "later") return;
-    if (!state.slots.length) {
-      $("#slot-days").classList.remove("hidden");
-      $("#slot-days").innerHTML = `<span class="muted">${esc(L("noSlots"))}</span>`;
-      $("#slot-times").innerHTML = "";
-      return;
-    }
-    if (state.co.day >= state.slots.length) state.co.day = 0;
-    // faqat bugungi vaqtlar — bitta kun bo'lsa kun tanlash ko'rsatilmaydi
-    $("#slot-days").classList.toggle("hidden", state.slots.length < 2);
-    $("#slot-days").innerHTML = state.slots.map((d, i) =>
-      `<button type="button" class="chip ${i === state.co.day ? "active" : ""}" data-day="${i}">${esc(L(d.day))}</button>`).join("");
-    const day = state.slots[state.co.day];
-    $("#slot-times").innerHTML = day.times.map((t) =>
-      `<button type="button" class="chip ${t.value === state.co.slot ? "active" : ""}" data-slot="${esc(t.value)}">${esc(t.label)}</button>`).join("");
-  }
-
-  $("#time-seg").addEventListener("click", (e) => {
-    const b = e.target.closest("[data-time]");
-    if (!b || b.disabled) return;
-    haptic();
-    state.co.time = b.dataset.time;
-    renderTime();
-  });
-  $("#slot-picker").addEventListener("click", (e) => {
-    const d = e.target.closest("[data-day]");
-    if (d) { state.co.day = +d.dataset.day; state.co.slot = ""; haptic(); return renderTime(); }
-    const s = e.target.closest("[data-slot]");
-    if (s) { state.co.slot = s.dataset.slot; haptic(); renderTime(); }
-  });
-
-  // promo-kod
-  function promoMsg(text, ok) {
-    const el = $("#promo-msg");
-    el.textContent = text;
-    el.className = "promo-msg " + (ok ? "ok" : "err");
-    el.classList.toggle("hidden", !text);
-  }
-  $("#promo-apply").addEventListener("click", async () => {
-    if (state.co.promo) {
-      state.co.promo = ""; $("#f-promo").value = ""; $("#f-promo").disabled = false;
-      $("#promo-apply").textContent = L("apply");
-      promoMsg("");
-      return refreshQuote();
-    }
-    const code = $("#f-promo").value.trim().toUpperCase();
-    if (!code) return;
-    try {
-      const { quote } = await api("/api/quote", { method: "POST", body: JSON.stringify({ items: rawItems(), order_type: state.co.type, promo_code: code }) });
-      state.co.promo = quote.promo_code;
-      $("#f-promo").value = quote.promo_code; $("#f-promo").disabled = true;
-      $("#promo-apply").textContent = L("remove");
-      promoMsg("✓ " + quote.promo_label, true);
-      notifyHaptic("success");
-      renderSummary(quote);
-    } catch (e) {
-      promoMsg(e.message, false);
-      notifyHaptic("error");
-    }
-  });
-
-  let quoteSeq = 0;
-  async function refreshQuote() {
-    const seq = ++quoteSeq;
-    try {
-      const { quote } = await api("/api/quote", { method: "POST", body: JSON.stringify({ items: rawItems(), order_type: state.co.type, promo_code: state.co.promo }) });
-      if (seq === quoteSeq) renderSummary(quote);
-    } catch (e) {
-      if (state.co.promo) { // promo endi mos emas (masalan olib ketishga o'tildi)
-        promoMsg(e.message, false);
-        state.co.promo = ""; $("#f-promo").disabled = false; $("#promo-apply").textContent = L("apply");
-        return refreshQuote();
-      }
-      showFormError(e.message);
-    }
-  }
-
-  function renderSummary(q) {
-    state.co.quote = q;
-    let html = `<div class="row"><span>${esc(L("items"))}</span><span>${money(q.subtotal)}</span></div>`;
-    if (q.promo_code) html += `<div class="row disc"><span>🎁 ${esc(L("discount"))} (${esc(q.promo_code)})</span><span>${q.discount ? "−" + money(q.discount) : esc(q.promo_label)}</span></div>`;
-    if (state.co.type === "delivery") html += `<div class="row"><span>${esc(L("deliveryFee"))}</span><span>${q.delivery_fee ? money(q.delivery_fee) : esc(L("free"))}</span></div>`;
-    html += `<div class="row total"><span>${esc(L("total"))}</span><b>${money(q.total)}</b></div>`;
-    if (q.min_order && q.subtotal < q.min_order) {
-      html += `<div class="note">${esc(L("minOrder", { sum: money(q.min_order), left: money(q.min_order - q.subtotal) }))}</div>`;
-    }
-    $("#checkout-summary").innerHTML = html;
-    $("#submit-btn").disabled = !!(q.min_order && q.subtotal < q.min_order);
-  }
-
-  document.querySelector(".pay-option.disabled").addEventListener("click", (e) => {
-    e.preventDefault();
-    notifyHaptic("warning");
-    toast(L("cardSoon"));
-  });
-
-  $("#geo-btn").addEventListener("click", () => {
-    const btn = $("#geo-btn");
-    const done = (lat, lon) => {
-      const link = `📍 https://maps.google.com/?q=${lat.toFixed(6)},${lon.toFixed(6)}`;
-      const a = $("#f-address");
-      a.value = (a.value.replace(/📍 \S+/g, "").trim() + " " + link).trim();
-      btn.textContent = L("geoAdded");
-      notifyHaptic("success");
+  // ---------------- RASMIYLASHTIRISH ----------------
+  const phoneDigits = (s) => (s || "").replace(/\D/g, "").replace(/^998/, "").slice(0, 9);
+  const phoneFmt = (d) => [d.slice(0, 2), d.slice(2, 5), d.slice(5, 7), d.slice(7, 9)].filter(Boolean).join(" ");
+  async function renderCheckout() {
+    if (!S.cart.length) return go("#cart");
+    const st = S.boot.settings, u = S.boot.user;
+    const types = ["delivery", "pickup"].filter((x) => st[x + "_enabled"]);
+    const d = S.draft;
+    const co = {
+      type: types.includes(d.type) ? d.type : types[0], name: d.name || u.full_name || u.first_name || "",
+      phone: phoneDigits(d.phone || u.phone), region: d.region || u.region_id || null, address: d.address || u.address || "",
+      comment: "", promo: "", pay: "cash", quote: null, promoErr: "", sending: false,
     };
-    const fail = () => { btn.textContent = L("geo"); toast(L("geoFail")); };
-    btn.textContent = L("geoLoading");
-    const lm = tg && tg.LocationManager;
-    if (lm && tg.isVersionAtLeast && tg.isVersionAtLeast("8.0")) {
-      lm.init(() => {
-        if (!lm.isLocationAvailable) return browserGeo(done, fail);
-        lm.getLocation((loc) => (loc ? done(loc.latitude, loc.longitude) : fail()));
-      });
-    } else browserGeo(done, fail);
-  });
-
-  function browserGeo(done, fail) {
-    if (!navigator.geolocation) return fail();
-    navigator.geolocation.getCurrentPosition((p) => done(p.coords.latitude, p.coords.longitude), fail, { enableHighAccuracy: true, timeout: 10000 });
-  }
-
-  function showFormError(msg) {
-    const el = $("#form-error");
-    el.textContent = msg;
-    el.classList.remove("hidden");
-    notifyHaptic("error");
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
-  }
-
-  $("#checkout-form").addEventListener("submit", async (e) => {
-    e.preventDefault();
-    const name = $("#f-name").value.trim();
-    const phone = phoneValue();
-    const address = $("#f-address").value.trim();
-    document.querySelectorAll(".field").forEach((f) => f.classList.remove("invalid"));
-    const invalid = (id, msg) => { $(id).closest(".field").classList.add("invalid"); showFormError(msg); };
-    if (name.length < 2) return invalid("#f-name", L("errName"));
-    if (!/^\+998\d{9}$/.test(phone)) return invalid("#f-phone", L("errPhone"));
-    if (state.co.type === "delivery" && address.length < 5) return invalid("#f-address", L("errAddress"));
-    if (state.co.time === "later" && !state.co.slot) return showFormError(L("errTime"));
-
-    const btn = $("#submit-btn");
-    btn.disabled = true;
-    btn.textContent = L("sending");
-    try {
-      const data = await api("/api/orders", {
-        method: "POST",
-        body: JSON.stringify({
-          name, phone, address,
-          order_type: state.co.type,
-          scheduled_at: state.co.time === "later" ? state.co.slot : "",
-          comment: $("#f-comment").value.trim(),
-          promo_code: state.co.promo,
-          payment_method: document.querySelector("input[name=payment]:checked").value,
-          items: rawItems(),
-        }),
-      });
-      const pids = state.cart.map((i) => i.pid);
-      state.cart = [];
-      saveCart();
-      pids.forEach(refreshCardBadge);
-      state.me = { ...(state.me || {}), full_name: name, phone, address: address || (state.me || {}).address };
-      $("#f-comment").value = "";
-      state.co.promo = ""; $("#f-promo").value = ""; $("#f-promo").disabled = false;
-      $("#promo-apply").textContent = L("apply"); promoMsg("");
-      state.co.slot = "";
-      state.currentOrder = data.order;
-      $("#success-code").textContent = data.order.code;
-      notifyHaptic("success");
-      state.history = [];
-      go("success", false);
-    } catch (err) {
-      showFormError(err.message);
-      loadMenu();
-    } finally {
-      btn.disabled = false;
-      btn.textContent = L("confirm");
-    }
-  });
-
-  $("#track-btn").addEventListener("click", () => { state.history = ["orders"]; openOrder(state.currentOrder.code); });
-
-  // ---------------- orders ----------------
-  const STEPS = [["new", "📝"], ["accepted", "✅"], ["cooking", "👨‍🍳"], ["delivering", "🛵"], ["delivered", "🎉"]];
-  const isActive = (s) => !["delivered", "cancelled"].includes(s);
-  const fmtDate = (s) => (s || "").slice(0, 16).replace(/^(\d{4})-(\d\d)-(\d\d)/, "$3.$2.$1");
-  const shortStatus = (label) => (label || "").replace(/^\S+\s/, "");
-
-  async function loadOrders(silent) {
-    const list = $("#orders-list");
-    if (!silent) list.innerHTML = `<div class="skeleton" style="height:90px"></div><div class="skeleton" style="height:90px"></div>`;
-    try {
-      const { orders } = await api("/api/orders");
-      if (state.view !== "orders") return;
-      if (!orders.length) {
-        list.innerHTML = `<div class="empty"><div class="e-ico">📦</div><p>${esc(L("noOrders"))}</p>
-          <button class="primary-btn" data-go="menu">${esc(L("orderNow"))}</button></div>`;
-        return;
-      }
-      list.innerHTML = orders.map((o) => `
-        <button class="order-card" data-code="${esc(o.code)}">
-          <div class="top"><span class="code">${o.order_type === "pickup" ? "🏃" : "🛵"} ${esc(o.code)}</span><span class="pill ${o.status}">${esc(shortStatus(o.status_label))}</span></div>
-          <div class="meta"><span>${fmtDate(o.created_at)}${o.scheduled_at ? " · ⏰ " + esc(fmtDate(o.scheduled_at)) : ""}</span><b>${money(o.total)}</b></div>
-        </button>`).join("");
-      if (orders.some((o) => isActive(o.status))) startPolling(() => loadOrders(true));
-    } catch (e) {
-      list.innerHTML = `<div class="empty"><div class="e-ico">⚠️</div><p>${esc(e.message)}</p></div>`;
-    }
-  }
-
-  $("#orders-list").addEventListener("click", (e) => {
-    const c = e.target.closest("[data-code]");
-    if (c) { haptic(); openOrder(c.dataset.code); }
-  });
-
-  async function openOrder(code) {
-    go("order");
-    $("#order-detail").innerHTML = `<div class="skeleton" style="height:300px;margin-top:20px"></div>`;
-    await refreshOrder(code);
-  }
-
-  async function refreshOrder(code) {
-    try {
-      const { order } = await api("/api/orders/" + encodeURIComponent(code));
-      if (state.view !== "order") return;
-      renderOrder(order);
-      if (isActive(order.status)) startPolling(() => refreshOrder(code));
-      else stopPolling();
-    } catch (e) {
-      $("#order-detail").innerHTML = `<div class="empty"><div class="e-ico">⚠️</div><p>${esc(e.message)}</p></div>`;
-    }
-  }
-
-  function stepLabel(key, o) {
-    if (key === "new") return L("stepNew");
-    if (key === o.status) return shortStatus(o.status_label);
-    // boshqa bosqichlar nomi — joriy holat yorlig'i formatida serverdan kelmaydi, shuning uchun qisqa nomlar
-    const names = state.lang === "ru"
-      ? { accepted: "Принят", cooking: "Готовится", delivering: o.order_type === "pickup" ? "Готов — можно забрать" : "В пути", delivered: o.order_type === "pickup" ? "Выдан" : "Доставлен" }
-      : { accepted: "Qabul qilindi", cooking: "Tayyorlanmoqda", delivering: o.order_type === "pickup" ? "Tayyor — olib keting" : "Yetkazilmoqda", delivered: o.order_type === "pickup" ? "Berildi" : "Yetkazildi" };
-    return names[key];
-  }
-
-  function renderOrder(o) {
-    const reached = STEPS.findIndex((s) => s[0] === o.status);
-    const steps = STEPS.map(([k, ico]) => [k, k === "delivering" && o.order_type === "pickup" ? "🛍" : ico]);
-    const timeline = o.status === "cancelled"
-      ? `<div class="cancel-box"><b>${esc(L("cancelledTitle"))}</b>${o.cancel_reason ? `<div class="muted">${esc(L("reason"))}: ${esc(o.cancel_reason)}</div>` : ""}</div>`
-      : `<div class="timeline">${steps.map(([key, ico], i) => `
-          <div class="step ${i <= reached ? "done" : ""} ${i === reached && isActive(o.status) ? "current" : ""}">
-            <div class="dot">${ico}</div>
-            <div class="label"><b>${esc(stepLabel(key, o))}</b>${o.timeline[key] ? `<small>${o.timeline[key].slice(11, 16)}</small>` : ""}</div>
-          </div>`).join("")}</div>`;
-
-    let rating = "";
-    if (o.status === "delivered") {
-      rating = o.review
-        ? `<div class="summary rate-box"><b>${esc(L("yourRating"))}:</b> <span class="stars static">${"★".repeat(o.review.rating)}${"☆".repeat(5 - o.review.rating)}</span>${o.review.comment ? `<div class="muted">💬 ${esc(o.review.comment)}</div>` : ""}</div>`
-        : `<div class="summary rate-box" id="rate-box">
-            <b>${esc(L("rateTitle"))}</b>
-            <div class="stars" id="stars">${[1, 2, 3, 4, 5].map((n) => `<button type="button" data-star="${n}">★</button>`).join("")}</div>
-            <textarea id="rate-comment" rows="2" maxlength="500" placeholder="${esc(L("ratePh"))}"></textarea>
-            <button class="primary-btn" id="rate-send" disabled>${esc(L("rateSend"))}</button>
-          </div>`;
-    }
-
-    $("#order-detail").innerHTML = `
-      <div class="od-head">
-        <button class="back" id="od-back">${esc(L("ordersBack"))}</button>
-        <h2>${esc(o.code)}</h2>
-        <p>${fmtDate(o.created_at)} · ${esc(L(o.order_type === "pickup" ? "pickup" : "delivery"))}${o.scheduled_at ? " · ⏰ " + esc(fmtDate(o.scheduled_at)) : ""}</p>
-      </div>
-      ${timeline}
-      ${rating}
-      <div class="summary od-items">
-        ${o.items.map((i) => `<div class="it"><span>${esc(i.name)}${i.variant ? ` (${esc(i.variant)})` : ""} × ${i.qty}</span><span>${money(i.price * i.qty)}</span></div>`).join("")}
-        ${o.discount ? `<div class="row disc"><span>🎁 ${esc(L("discount"))} (${esc(o.promo_code)})</span><span>−${money(o.discount)}</span></div>` : ""}
-        ${o.order_type === "delivery" ? `<div class="row"><span>${esc(L("deliveryFee"))}</span><span>${o.delivery_fee ? money(o.delivery_fee) : esc(L("free"))}</span></div>` : ""}
-        <div class="row total"><span>${esc(L("total"))}</span><b>${money(o.total)}</b></div>
-      </div>
-      <div class="summary od-info">
-        <div>👤 <b>${esc(o.customer_name)}</b></div>
-        <div>📞 <b>+998 ${esc(formatLocal(localDigits(o.phone)))}</b></div>
-        ${o.order_type === "delivery" ? `<div>📍 <b>${esc(o.address)}</b></div>` : `${state.settings.cafe_address ? `<div>🏃 <b>${esc(state.settings.cafe_address)}</b></div>` : ""}${mapLink()}`}
-        ${o.comment ? `<div>💬 ${esc(o.comment)}</div>` : ""}
-        <div>${esc(L("cash"))}</div>
-      </div>
-      ${o.status === "new" ? `<button class="danger-btn" id="cancel-order">${esc(L("cancelOrder"))}</button>` : ""}
-      ${state.settings.phone ? `<p class="muted" style="text-align:center;font-size:13px">${esc(L("questions"))}: ${esc(state.settings.phone)}</p>` : ""}`;
-
-    $("#od-back").onclick = () => go("orders");
-    const cb = $("#cancel-order");
-    if (cb) cb.onclick = () => confirmDialog(L("cancelConfirm"), async () => {
+    const save = () => { S.draft = { type: co.type, name: co.name, phone: co.phone, region: co.region, address: co.address }; store.set("draft", S.draft); };
+    const region = () => S.boot.regions.find((x) => x.id === co.region);
+    const quote = async () => {
       try {
-        const { order } = await api(`/api/orders/${encodeURIComponent(o.code)}/cancel`, { method: "POST" });
-        renderOrder(order); stopPolling(); toast(L("cancelledToast"));
-      } catch (e) { toast(e.message); }
-    });
-
-    const stars = $("#stars");
-    if (stars) {
-      let rating = 0;
-      stars.addEventListener("click", (e) => {
-        const b = e.target.closest("[data-star]");
-        if (!b) return;
-        rating = +b.dataset.star;
-        haptic();
-        stars.querySelectorAll("button").forEach((x) => x.classList.toggle("on", +x.dataset.star <= rating));
-        $("#rate-send").disabled = false;
+        const r = await api("/api/quote", { method: "POST", body: { items: S.cart, order_type: co.type, region_id: co.region, promo_code: co.promo } });
+        co.quote = r.quote; co.promoErr = "";
+      } catch (e) { if (co.promo) { co.promoErr = e.message; co.promo = ""; return quote(); } toast(e.message, true); }
+      drawSummary();
+    };
+    const drawSummary = () => {
+      const q = co.quote, el = document.getElementById("sum");
+      if (!q || !el) return;
+      el.innerHTML = `<div class="sum-row"><span>${T("items")}</span><b>${money(q.subtotal)}</b></div>
+        ${q.discount ? `<div class="sum-row"><span>${T("discount")} (${esc(q.promo_code)})</span><b>−${money(q.discount)}</b></div>` : ""}
+        ${co.type === "delivery" ? `<div class="sum-row"><span>${T("deliveryFee")}${q.region ? ` · ${esc(q.region.eta)}` : ""}</span><b>${q.region ? (q.delivery_fee ? money(q.delivery_fee) : T("free")) : "—"}</b></div>` : ""}
+        <div class="sum-row total"><span>${T("total")}</span><b>${money(q.total)}</b></div>`;
+      document.getElementById("pay-total").textContent = money(q.total);
+      const sub = document.getElementById("rg-sub");
+      if (sub && q.region) sub.textContent = `${q.delivery_fee ? money(q.delivery_fee) : T("free")} · ${q.region.eta}`;
+      const pm = document.getElementById("promo-msg");
+      pm.innerHTML = co.promoErr ? `<p class="err-msg">${esc(co.promoErr)}</p>` : q.promo_code ? `<p class="ok-msg">✓ ${esc(q.promo_code)} — ${esc(q.promo_label)}</p>` : "";
+    };
+    const draw = () => {
+      const rg = region();
+      view.innerHTML = `
+        <div class="topbar"><button class="icon-btn glass" data-act="back">${ico("back")}</button><h1>${T("checkoutTitle")}</h1></div>
+        ${types.length > 1 ? `<div class="seg glass">${types.map((x) => `<button data-type="${x}" class="${co.type === x ? "on" : ""}">${ico(x === "delivery" ? "truck" : "store")}${T(x)}</button>`).join("")}</div>` : ""}
+        ${co.type === "pickup" ? `<div class="note glass" style="margin:0 0 16px">${ico("pin")}<span>${T("pickupFrom")}${st.shop_address ? `<br><b style="color:var(--text)">${esc(st.shop_address)}</b>` : ""}${st.shop_map_url ? `<br><a href="${esc(st.shop_map_url)}" target="_blank">${T("openMap")} →</a>` : ""}</span></div>` : ""}
+        <label class="field"><span>${T("name")}</span><input class="input" id="f-name" value="${esc(co.name)}" placeholder="${esc(T("namePh"))}" autocomplete="name"></label>
+        <label class="field"><span>${T("phone")}</span><div class="input phone"><em>+998</em><input id="f-phone" inputmode="tel" value="${esc(phoneFmt(co.phone))}" placeholder="90 123 45 67" autocomplete="tel"></div></label>
+        ${co.type === "delivery" ? `
+          <div class="field"><span>${T("region")}</span><button class="input select" data-act="region"><span>${rg ? esc(rg.name) : `<span class="muted">${T("regionPh")}</span>`}</span>
+            <span class="sub" id="rg-sub"></span></button></div>
+          <label class="field"><span>${T("address")}</span><textarea class="input" id="f-addr" rows="2" placeholder="${esc(T("addressPh"))}">${esc(co.address)}</textarea>
+            <button class="link-btn" data-act="geo" style="margin:8px 4px 0;display:inline-flex;gap:6px;align-items:center">${ico("pin")}${T("geo")}</button></label>` : ""}
+        <label class="field"><span>${T("comment")}</span><textarea class="input" id="f-comment" rows="2" placeholder="${esc(T("commentPh"))}">${esc(co.comment)}</textarea></label>
+        <div class="field"><span>${T("promo")}</span><div class="promo"><input class="input" id="f-promo" placeholder="${esc(T("promoPh"))}" value="${esc(co.quote && co.quote.promo_code || "")}">
+          <button class="btn btn-white" data-act="promo">${co.quote && co.quote.promo_code ? T("remove") : T("apply")}</button></div><div id="promo-msg"></div></div>
+        <div class="field"><span>${T("payment")}</span><div class="pay">
+          <button class="pay-o glass on" data-pay="cash">${ico("cash")}<span class="t"><b>${T("cash")}</b><small>${T("cashSub")}</small></span><span class="radio"></span></button>
+          <button class="pay-o glass soon" data-pay="card">${ico("card")}<span class="t"><b>${T("card")}</b><small>${T("cardSoon")}</small></span><span class="pill-soon">${T("soon")}</span></button></div></div>
+        <div class="summary glass" id="sum"></div>
+        ${st.is_open ? "" : `<div class="note glass">${ico("bell")}<span>${T("afterHours", { time: st.next_open || "" })}</span></div>`}
+        <div class="buybar glass"><div class="total"><small>${T("total")}</small><b id="pay-total">—</b></div>
+          <button class="btn btn-primary" data-act="place">${T("confirm")}</button></div>`;
+      const bind = (id, key, fn) => { const el = document.getElementById(id); el && el.addEventListener("input", () => { co[key] = fn ? fn(el) : el.value; save(); }); };
+      bind("f-name", "name"); bind("f-addr", "address"); bind("f-comment", "comment");
+      const ph = document.getElementById("f-phone");
+      ph.addEventListener("input", () => { co.phone = phoneDigits(ph.value); ph.value = phoneFmt(co.phone); save(); });
+      view.querySelectorAll("[data-type]").forEach((b) => b.addEventListener("click", () => { co.type = b.dataset.type; save(); haptic("sel"); draw(); quote(); }));
+      view.querySelector('[data-pay="card"]').addEventListener("click", () => toast(T("cardSoon")));
+      const on = (name, fn) => { const el = view.querySelector(`[data-act="${name}"]`); el && el.addEventListener("click", fn); };
+      on("region", () => openSheet(`<h3>${T("region")}</h3><div class="opt-list">${S.boot.regions.map((x) => `<button data-rg="${x.id}" class="${x.id === co.region ? "on" : ""}">
+          <span>${esc(x.name)}<br><small>${T("eta")}: ${esc(x.eta)}</small></span><span>${x.fee ? money(x.fee) : T("free")}</span></button>`).join("")}</div>
+          ${S.boot.regions[0] && S.boot.regions[0].free_from ? `<p class="muted" style="font-size:13px;margin-top:12px">${T("freeFrom", { sum: money(S.boot.regions[0].free_from) })}</p>` : ""}`, (el) => {
+        el.querySelectorAll("[data-rg]").forEach((b) => b.addEventListener("click", () => { co.region = +b.dataset.rg; save(); closeSheet(); draw(); quote(); }));
+      }));
+      on("promo", () => {
+        if (co.quote && co.quote.promo_code) { co.promo = ""; } else { co.promo = document.getElementById("f-promo").value.trim(); }
+        quote().then(draw);
       });
-      $("#rate-send").onclick = async () => {
-        try {
-          const { order } = await api(`/api/orders/${encodeURIComponent(o.code)}/review`, {
-            method: "POST", body: JSON.stringify({ rating, comment: $("#rate-comment").value.trim() }),
-          });
-          notifyHaptic("success");
-          toast(L("rateThanks"));
-          renderOrder(order);
-        } catch (e) { toast(e.message); }
-      };
-    }
+      on("geo", () => {
+        if (!navigator.geolocation) return toast(T("geoFail"), true);
+        toast(T("geoLoading"));
+        navigator.geolocation.getCurrentPosition((pos) => {
+          const link = `https://maps.google.com/?q=${pos.coords.latitude.toFixed(6)},${pos.coords.longitude.toFixed(6)}`;
+          co.address = (co.address ? co.address + "\n" : "") + "📍 " + link; save(); draw(); toast(T("geoAdded"));
+        }, () => toast(T("geoFail"), true), { enableHighAccuracy: true, timeout: 10000 });
+      });
+      on("place", place);
+      drawSummary();
+    };
+    const place = async () => {
+      if (co.sending) return;
+      const err = (id, msg) => { const el = document.getElementById(id); el && el.classList.add("err"); toast(msg, true); };
+      if (co.name.trim().length < 2) return err("f-name", T("errName"));
+      if (co.phone.length !== 9) return err("f-phone", T("errPhone"));
+      if (co.type === "delivery" && !co.region) return toast(T("errRegion"), true);
+      if (co.type === "delivery" && co.address.trim().length < 5) return err("f-addr", T("errAddress"));
+      co.sending = true;
+      const btn = view.querySelector('[data-act="place"]');
+      btn.disabled = true; btn.textContent = T("sending");
+      try {
+        const r = await api("/api/orders", { method: "POST", body: { items: S.cart, order_type: co.type, name: co.name.trim(),
+          phone: "+998" + co.phone, region_id: co.region, address: co.address.trim(), comment: co.comment.trim(),
+          promo_code: co.quote && co.quote.promo_code || "", payment_method: co.pay } });
+        S.cart = []; saveCart(); S.orders = null; S.pcache = {};
+        haptic("ok");
+        location.replace("#placed/" + r.order.code);
+      } catch (e) {
+        toast(e.message, true); co.sending = false; btn.disabled = false; btn.textContent = T("confirm");
+      }
+    };
+    draw();
+    quote();
+  }
+  function renderPlaced(r) {
+    view.innerHTML = `<div class="placed"><div class="ok">${ico("check")}</div><h2>${T("placed")}</h2>
+      <p class="muted">${T("orderId")}</p><code class="glass">${esc(r.code)}</code><p class="muted" style="max-width:320px;margin:10px auto 26px">${T("placedSub")}</p>
+      <div class="actions"><button class="btn btn-primary" data-go="#o${esc(r.code)}">${ico("box")}${T("track")}</button>
+      <button class="btn btn-ghost glass" data-go="#home">${T("continueShopping")}</button></div></div>`;
+    refreshBoot();
   }
 
-  function startPolling(fn) { stopPolling(); state.pollTimer = setInterval(fn, 8000); }
-  function stopPolling() { if (state.pollTimer) clearInterval(state.pollTimer); state.pollTimer = null; }
-
-  // ---------------- init ----------------
-  async function init() {
-    if (tg) {
-      tg.ready();
-      tg.expand();
-      try { tg.setHeaderColor("#071a10"); tg.setBackgroundColor("#071a10"); tg.setBottomBarColor && tg.setBottomBarColor("#071a10"); } catch (e) {}
-      try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch (e) {}
-      tg.BackButton.onClick(back);
-    }
-    const tgLang = tg && tg.initDataUnsafe && tg.initDataUnsafe.user && tg.initDataUnsafe.user.language_code;
-    state.lang = tgLang && tgLang.startsWith("ru") ? "ru" : "uz";
-    if (!initData && !devUser) {
-      state.texts = { openInTg: state.lang === "ru" ? "Пожалуйста, откройте приложение через Telegram-бота." : "Iltimos, ushbu ilovani Telegram bot orqali oching." };
-      $("#menu-list").innerHTML = `<div class="empty"><div class="e-ico">📱</div><p>${esc(L("openInTg"))}</p></div>`;
+  // ---------------- SEVIMLILAR va SOLISHTIRISH ----------------
+  function renderFav() {
+    const items = S.boot.products.filter((p) => S.favs.has(p.id));
+    view.innerHTML = `<div class="topbar"><h1>${T("tabFav")}</h1>${S.compare.length ? `<button class="chip glass on" data-go="#compare">⇄ ${T("compare")} · ${S.compare.length}</button>` : ""}</div>
+      ${items.length ? `<div class="grid">${items.map(card).join("")}</div>`
+        : `<div class="empty"><div class="big glass">${ico("heart")}</div><h3>${T("tabFav")}</h3><p>${T("favEmpty")}</p>
+          <button class="btn btn-white" data-go="#catalog">${T("toCatalog")}</button></div>`}`;
+  }
+  async function renderCompare() {
+    if (!S.compare.length) {
+      view.innerHTML = `<div class="topbar"><button class="icon-btn glass" data-act="back">${ico("back")}</button><h1>${T("compare")}</h1></div>
+        <div class="empty"><div class="big glass">${ico("compare")}</div><p>${T("compareEmpty")}</p></div>`;
       return;
     }
-    await loadMenu();
-    api("/api/me").then((d) => (state.me = d.user)).catch(() => {});
-    const hash = location.hash.replace("#", "");
-    if (["orders", "cart"].includes(hash)) go(hash);
+    view.innerHTML = `<div class="sk" style="height:300px"></div>`;
+    const list = (await Promise.all(S.compare.map((id) => loadProduct(id).catch(() => null)))).filter(Boolean).map((x) => x.product);
+    let onlyDiff = false;
+    const keys = [...new Set(list.flatMap((p) => p.specs.map((s) => s.k)))];
+    const draw = () => {
+      const rows = [[T("price"), list.map((p) => money(p.price))], [T("warranty"), list.map((p) => p.warranty || "—")],
+        ...keys.map((k) => [k, list.map((p) => (p.specs.find((s) => s.k === k) || {}).v || "—")])];
+      view.innerHTML = `<div class="topbar"><button class="icon-btn glass" data-act="back">${ico("back")}</button><h1>${T("compare")}</h1>
+          <button class="link-btn" data-act="cmpclear">${T("compareClear")}</button></div>
+        <label class="check" style="margin-bottom:8px"><input type="checkbox" id="diff" ${onlyDiff ? "checked" : ""}>${T("onlyDiff")}</label>
+        <div class="cmp-wrap"><table class="cmp"><tr><th></th>${list.map((p) => `<td class="p" data-go="#p${p.id}"><img src="${esc(img(p.image))}" alt=""><b>${esc(p.name)}</b>
+          <button class="link-btn" data-rmc="${p.id}">✕</button></td>`).join("")}</tr>
+          ${rows.map(([k, vals]) => { const diff = new Set(vals).size > 1; return onlyDiff && !diff ? "" : `<tr class="${diff ? "diff" : ""}"><td>${esc(k)}</td>${vals.map((x) => `<td>${esc(x)}</td>`).join("")}</tr>`; }).join("")}
+        </table></div>`;
+      document.getElementById("diff").addEventListener("change", (e) => { onlyDiff = e.target.checked; draw(); });
+      view.querySelectorAll("[data-rmc]").forEach((b) => b.addEventListener("click", (e) => { e.stopPropagation(); toggleCompare(+b.dataset.rmc); renderCompare(); }));
+      view.querySelector('[data-act="cmpclear"]').addEventListener("click", () => { S.compare = []; store.set("cmp", []); renderCompare(); });
+    };
+    draw();
   }
 
-  init();
+  // ---------------- BUYURTMALAR ----------------
+  const ACTIVE = ["new", "accepted", "packing", "shipping"];
+  const stClass = (s) => (ACTIVE.includes(s) ? "active" : s === "delivered" ? "done" : s);
+  async function renderOrders() {
+    view.innerHTML = `<div class="topbar"><h1>${T("myOrders")}</h1></div>${'<div class="sk" style="height:130px;margin-bottom:10px"></div>'.repeat(3)}`;
+    S.orders = (await api("/api/orders")).orders;
+    updateBadges();
+    view.innerHTML = `<div class="topbar"><h1>${T("myOrders")}</h1></div>
+      ${S.orders.length ? S.orders.map((o) => `<button class="oc glass" data-go="#o${esc(o.code)}">
+        <div class="top"><span class="code">${esc(o.code)}</span><span class="st ${stClass(o.status)}">${esc(o.status_label)}</span></div>
+        <div class="thumbs">${o.items.slice(0, 5).map((i) => `<img src="${esc(img(i.image))}" alt="">`).join("")}</div>
+        <div class="bottom"><span>${o.created_at.slice(0, 16)}${o.unread ? ` · 💬 ${o.unread}` : ""}</span><b>${money(o.total)}</b></div></button>`).join("")
+        : `<div class="empty"><div class="big glass">${ico("box")}</div><h3>${T("noOrders")}</h3><button class="btn btn-white" data-go="#catalog">${T("toCatalog")}</button></div>`}`;
+  }
+
+  async function renderOrder(r) {
+    view.innerHTML = `<div class="sk" style="height:220px"></div>`;
+    let o = (await api(`/api/orders/${encodeURIComponent(r.code)}`)).order;
+    let messages = [];
+    const steps = ["new", "accepted", "packing", "shipping", "delivered"];
+    const draw = () => {
+      const reached = steps.indexOf(o.status);
+      view.innerHTML = `
+        <div class="topbar"><button class="icon-btn glass" data-act="back">${ico("back")}</button><h1>${esc(o.code)}</h1><span class="st ${stClass(o.status)}">${esc(o.status_label)}</span></div>
+        <div class="card-box glass" style="margin-top:0">
+          ${["cancelled", "returned"].includes(o.status) ? `<p style="margin:0"><b>${esc(o.status_label)}</b>${o.cancel_reason ? `<br><span class="muted">${T("reason")}: ${esc(o.cancel_reason)}</span>` : ""}</p>`
+          : `<ul class="timeline">${steps.map((s, i) => `<li class="${i < reached || (i === reached && s === "delivered") ? "done" : i === reached ? "cur" : ""}">
+              <span class="dot">${i < reached || s === "delivered" && i === reached ? ico("check") : ""}</span>${esc(s === "new" ? T("stepNew") : statusName(s, o.order_type))}
+              ${o.timeline[s] ? `<small>${o.timeline[s].slice(5, 16).replace("-", ".")}</small>` : ""}</li>`).join("")}</ul>`}
+          ${o.order_type === "delivery" && o.eta && ACTIVE.includes(o.status) ? `<div class="note glass" style="margin-top:14px">${ico("truck")}<span>${esc(o.region)} · ${T("eta")}: <b style="color:var(--text)">${esc(o.eta)}</b></span></div>` : ""}</div>
+        ${o.media.length ? `<div class="card-box glass"><h3>${ico("camera")}${T("statusPhotos")}</h3><div class="media-row">${o.media.map((m) => `<figure><a href="${esc(img(m.path))}" target="_blank"><img src="${esc(img(m.path))}" alt=""></a><figcaption>${esc(statusName(m.status, o.order_type))}${m.caption ? " · " + esc(m.caption) : ""}</figcaption></figure>`).join("")}</div></div>` : ""}
+        <div class="card-box glass"><h3>${ico("box")}${T("items")}</h3>
+          ${o.items.map((i) => `<div class="oi"><img src="${esc(img(i.image))}" alt=""><div class="t"><b>${esc(i.name)}</b><small>${i.variant ? esc(i.variant) + " · " : ""}×${i.qty}</small></div><b>${money(i.price * i.qty)}</b></div>`).join("")}
+          <div style="margin-top:10px">${o.discount ? `<div class="sum-row"><span>${T("discount")} (${esc(o.promo_code)})</span><b>−${money(o.discount)}</b></div>` : ""}
+          ${o.order_type === "delivery" ? `<div class="sum-row"><span>${T("deliveryFee")}</span><b>${o.delivery_fee ? money(o.delivery_fee) : T("free")}</b></div>` : ""}
+          <div class="sum-row total"><span>${T("total")}</span><b>${money(o.total)}</b></div></div>
+          <p class="muted" style="font-size:13px;margin:10px 0 0">${o.order_type === "delivery" ? `📍 ${esc(o.region)}, ${esc(o.address)}` : `🏬 ${T("pickupFrom")}${S.boot.settings.shop_address ? ": " + esc(S.boot.settings.shop_address) : ""}`}</p></div>
+        ${o.status === "delivered" && o.items.some((i) => i.warranty_months) ? `<div class="warranty glass"><h3 style="margin:0 0 10px;font:600 16px var(--display);display:flex;gap:8px;align-items:center">${ico("shield")}${T("warrantyCard")}</h3>
+          ${o.items.filter((i) => i.warranty_months).map((i) => `<div class="w"><span>${esc(i.name)}${i.serial ? `<br><code>${T("serial")}: ${esc(i.serial)}</code>` : ""}</span><b>${T("warrantyUntil", { date: addMonths(o.timeline.delivered || o.created_at, i.warranty_months) })}</b></div>`).join("")}</div>` : ""}
+        ${o.tickets.length ? `<div class="card-box glass"><h3>${ico("alert")}${T("tickets")}</h3>${o.tickets.map((tk) => `<div class="sum-row"><span>${T("ticketKind_" + tk.kind)} · ${tk.created_at.slice(5, 16)}${tk.note ? `<br><small>${esc(tk.note)}</small>` : ""}</span><b>${T("ticketSt_" + tk.status)}</b></div>`).join("")}</div>` : ""}
+        <div class="card-box glass" id="chatbox"><h3>${ico("chat")}${T("chatTitle")}</h3>
+          ${o.chat_open ? `<div class="chat" id="chat"></div><div class="chat-in"><input class="input" id="chat-in" placeholder="${esc(T("chatPh"))}" maxlength="2000"><button class="icon-btn" data-act="send">${ico("send")}</button></div>`
+            : `<div class="closed-chat">${ico("alert")}${T("chatClosed")}</div>`}</div>
+        ${o.status === "delivered" && !o.review ? `<div class="card-box glass center"><h3 style="justify-content:center">${T("rateTitle")}</h3><div class="stars" id="stars">${[1, 2, 3, 4, 5].map((n) => `<button data-star="${n}">${ico("star")}</button>`).join("")}</div>
+          <textarea class="input" id="rate-c" rows="2" placeholder="${esc(T("ratePh"))}"></textarea><button class="btn btn-white btn-block" style="margin-top:10px" data-act="rate">${T("rateSend")}</button></div>` : ""}
+        ${o.review ? `<p class="center muted">${T("yourRating")}: ${"⭐".repeat(o.review.rating)}</p>` : ""}
+        <div class="actions">
+          ${o.can_return && !o.has_open_ticket ? `<button class="btn btn-white" data-act="return">${ico("return")}${T("returnOrder")}<small style="font-weight:500;opacity:.6">· ${T("returnUntil", { date: o.return_until })}</small></button>` : ""}
+          <button class="btn btn-ghost glass" data-act="issue" ${o.has_open_ticket ? "disabled" : ""}>${ico("alert")}${T("issue")}</button>
+          ${o.status === "new" ? `<button class="btn btn-ghost" data-act="cancel" style="color:#ff7b72">${T("cancelOrder")}</button>` : ""}
+        </div>`;
+      const on = (name, fn) => { const el = view.querySelector(`[data-act="${name}"]`); el && el.addEventListener("click", fn); };
+      on("cancel", () => confirmDo(T("cancelConfirm"), async () => {
+        try { o = (await api(`/api/orders/${o.code}/cancel`, { method: "POST" })).order; toast(T("cancelledToast")); S.pcache = {}; draw(); } catch (e) { toast(e.message, true); }
+      }));
+      on("issue", () => ticketSheet("issue"));
+      on("return", () => ticketSheet("return"));
+      let stars = 0;
+      view.querySelectorAll("[data-star]").forEach((b) => b.addEventListener("click", () => {
+        stars = +b.dataset.star; haptic("sel");
+        view.querySelectorAll("[data-star]").forEach((x) => x.classList.toggle("on", +x.dataset.star <= stars));
+      }));
+      on("rate", async () => {
+        if (!stars) return;
+        try { o = (await api(`/api/orders/${o.code}/review`, { method: "POST", body: { rating: stars, comment: document.getElementById("rate-c").value } })).order; toast(T("rateThanks")); draw(); }
+        catch (e) { toast(e.message, true); }
+      });
+      if (o.chat_open) {
+        drawChat();
+        const input = document.getElementById("chat-in");
+        const send = async () => {
+          const text = input.value.trim();
+          if (!text) return;
+          input.value = "";
+          try { messages = (await api(`/api/orders/${o.code}/chat`, { method: "POST", body: { text } })).messages; drawChat(); }
+          catch (e) { toast(e.message, true); input.value = text; }
+        };
+        on("send", send);
+        input.addEventListener("keydown", (e) => e.key === "Enter" && send());
+      }
+    };
+    const drawChat = () => {
+      const el = document.getElementById("chat");
+      if (!el) return;
+      el.innerHTML = messages.length ? messages.map((m) => `<div class="msg ${m.from === "customer" ? "me" : "them"}">${m.image ? `<img src="${esc(img(m.image))}" alt="">` : ""}${esc(m.text)}<small>${m.at.slice(11, 16)}</small></div>`).join("")
+        : `<p class="muted" style="font-size:13px;margin:0">${T("chatEmpty")}</p>`;
+      el.scrollTop = el.scrollHeight;
+    };
+    const ticketSheet = (kind) => {
+      const files = [];
+      openSheet(`<h3>${kind === "return" ? T("returnOrder") : T("issue")}</h3>
+        <p class="muted" style="margin-top:-6px;font-size:13.5px">${kind === "return" ? T("returnHint") + " " + T("returnUntil", { date: o.return_until }) : T("issueHint")}</p>
+        <textarea class="input" id="tk-reason" rows="4" placeholder="${esc(T("reasonPh"))}"></textarea>
+        <div class="field" style="margin-top:14px"><span>${T("addPhotos")} (≤5)</span><div class="pics" id="tk-pics"></div></div>
+        <button class="btn btn-primary btn-block" data-tk="send">${ico("send")}${T("send")}</button>`, (el) => {
+        const pics = el.querySelector("#tk-pics");
+        const drawPics = () => {
+          pics.innerHTML = files.map((f, i) => `<div class="pic"><img src="${URL.createObjectURL(f)}" alt=""><button data-rmp="${i}">${ico("close")}</button></div>`).join("")
+            + (files.length < 5 ? `<label>${ico("camera")}<input type="file" accept="image/*" multiple hidden></label>` : "");
+          const inp = pics.querySelector("input");
+          inp && inp.addEventListener("change", () => { files.push(...[...inp.files].slice(0, 5 - files.length)); drawPics(); });
+          pics.querySelectorAll("[data-rmp]").forEach((b) => b.addEventListener("click", () => { files.splice(+b.dataset.rmp, 1); drawPics(); }));
+        };
+        drawPics();
+        el.querySelector('[data-tk="send"]').addEventListener("click", async (e) => {
+          const reason = el.querySelector("#tk-reason").value.trim();
+          if (reason.length < 10) return toast(T("reasonShort"), true);
+          if (kind === "return" && !files.length) return toast(T("photoRequired"), true);
+          const fd = new FormData();
+          fd.append("kind", kind); fd.append("reason", reason);
+          files.forEach((f) => fd.append("photo", f, f.name || "photo.jpg"));
+          e.currentTarget.disabled = true;
+          try { o = (await api(`/api/orders/${o.code}/tickets`, { method: "POST", body: fd })).order; closeSheet(); toast(T("ticketSent")); draw(); }
+          catch (err) { toast(err.message, true); e.currentTarget.disabled = false; }
+        });
+      });
+    };
+    if (o.chat_open) messages = (await api(`/api/orders/${o.code}/chat`)).messages;
+    draw();
+    // faol buyurtma: holat va chat avtomatik yangilanadi
+    if (ACTIVE.includes(o.status)) {
+      S.timers.push(setInterval(async () => {
+        if (document.hidden || !sheetEl.classList.contains("hidden")) return;
+        try {
+          const fresh = (await api(`/api/orders/${o.code}`)).order;
+          const msgs = fresh.chat_open ? (await api(`/api/orders/${o.code}/chat`)).messages : [];
+          const typing = document.activeElement && document.activeElement.id === "chat-in";
+          if (fresh.status !== o.status || fresh.media.length !== o.media.length) { o = fresh; messages = msgs; if (!typing) draw(); }
+          else if (msgs.length !== messages.length) { messages = msgs; drawChat(); }
+        } catch (e) { /* tarmoq vaqtincha yo'q */ }
+      }, 10000));
+    }
+  }
+  function statusName(s, type) {
+    const map = S.lang === "ru"
+      ? { new: "Заказ оформлен", accepted: "Принят", packing: "Собирается", shipping: type === "pickup" ? "Готов — можно забирать" : "В пути", delivered: type === "pickup" ? "Выдан" : "Доставлен" }
+      : { new: "Buyurtma berildi", accepted: "Qabul qilindi", packing: "Yig'ilmoqda", shipping: type === "pickup" ? "Tayyor — olib ketishingiz mumkin" : "Yo'lda", delivered: type === "pickup" ? "Topshirildi" : "Yetkazildi" };
+    return map[s] || s;
+  }
+  function addMonths(dateStr, months) {
+    const d = new Date(dateStr.slice(0, 10) + "T00:00:00");
+    const day = d.getDate();
+    d.setMonth(d.getMonth() + months);
+    if (d.getDate() < day) d.setDate(0);
+    return d.toLocaleDateString("ru-RU");
+  }
+
+  // ---------------- umumiy hodisalar ----------------
+  document.addEventListener("click", (e) => {
+    const fav = e.target.closest("[data-fav]");
+    if (fav) { e.stopPropagation(); e.preventDefault(); toggleFav(+fav.dataset.fav); return; }
+    const quick = e.target.closest("[data-quick]");
+    if (quick) {
+      e.stopPropagation();
+      const p = S.byId[+quick.dataset.quick];
+      // bitta variantli mahsulot darhol savatga, aks holda variant tanlash uchun sahifasi ochiladi
+      loadProduct(p.id).then(({ product }) => {
+        const sellable = product.variants.filter((v) => v.stock !== "out");
+        if (sellable.length === 1 && product.variants.length === 1) addToCart(sellable[0].id, 1, sellable[0].left || 20);
+        else { toast(T("chooseOption")); go("#p" + p.id); }
+      }).catch((err) => toast(err.message, true));
+      return;
+    }
+    const lang = e.target.closest("[data-lang]");
+    if (lang && lang.dataset.lang !== S.lang) { setLang(lang.dataset.lang); return; }
+    const act = e.target.closest("[data-act]");
+    if (act && act.dataset.act === "back") { back(); return; }
+    if (act && act.dataset.act === "filters") { filterSheet(); return; }
+    if (act && act.dataset.act === "reload") { location.reload(); return; }
+    const g = e.target.closest("[data-go]");
+    if (g && !e.target.closest("button:not([data-go])")) { haptic("light"); go(g.dataset.go); }
+  });
+  window.addEventListener("hashchange", render);
+
+  async function setLang(lang) {
+    try { await api("/api/me/lang", { method: "POST", body: { lang } }); } catch (e) { /* oflayn */ }
+    S.pcache = {};
+    await boot();
+    render();
+  }
+
+  function applyBrand(b) {
+    const hex = /^#[0-9a-f]{6}$/i.test(b.color) ? b.color : "#e0382b";
+    const rgb = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(", ");
+    document.documentElement.style.setProperty("--brand", hex);
+    document.documentElement.style.setProperty("--brand-rgb", rgb);
+    document.title = b.name;
+  }
+
+  async function boot() {
+    const data = await api("/api/bootstrap");
+    S.boot = data; S.texts = data.texts; S.lang = data.lang;
+    S.byId = Object.fromEntries(data.products.map((p) => [p.id, p]));
+    S.favs = new Set(data.favorites);
+    applyBrand(data.brand);
+    document.documentElement.lang = data.lang;
+    document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = T(el.dataset.i18n); });
+    updateBadges();
+  }
+  async function refreshBoot() { try { await boot(); } catch (e) { /* keyingi safar */ } }
+
+  async function start() {
+    if (tg) {
+      tg.ready(); tg.expand();
+      try { tg.setHeaderColor("#0a0a0b"); tg.setBackgroundColor("#0a0a0b"); tg.setBottomBarColor && tg.setBottomBarColor("#0a0a0b"); } catch (e) { /* eski klient */ }
+      try { tg.disableVerticalSwipes && tg.disableVerticalSwipes(); } catch (e) { /* eski klient */ }
+      tg.BackButton && tg.BackButton.onClick(back);
+    }
+    if (!initData && !devUser) {
+      view.innerHTML = `<div class="empty"><div class="big glass">${ico("alert")}</div><h3>Telegram</h3><p>Iltimos, ilovani Telegram bot orqali oching.<br>Пожалуйста, откройте приложение через Telegram-бота.</p></div>`;
+      return;
+    }
+    view.innerHTML = `<div class="sk" style="height:46px;width:50%;margin-bottom:16px"></div><div class="sk" style="height:50px;border-radius:999px"></div><div class="sk" style="height:200px;margin-top:14px"></div>`;
+    try { await boot(); } catch (e) {
+      view.innerHTML = `<div class="empty"><div class="big glass">${ico("alert")}</div><h3>${esc(e.message)}</h3><button class="btn btn-white" data-act="reload">Qayta urinish</button></div>`;
+      return;
+    }
+    render();
+    api("/api/orders").then((r) => { S.orders = r.orders; updateBadges(); }).catch(() => {});
+  }
+  start();
 })();

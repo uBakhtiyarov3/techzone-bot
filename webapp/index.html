@@ -2,163 +2,71 @@
 <html lang="uz">
 <head>
   <meta charset="utf-8">
-  <meta name="theme-color" content="#071a10">
+  <meta name="theme-color" content="#0a0a0b">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <title>Yaproq go'sht</title>
+  <title>Tech.Zone</title>
+  <link rel="icon" href="brand/favicon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css?v={{v}}">
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
   <script src="config.js?v={{v}}"></script>
 </head>
 <body>
-  <div class="bg" aria-hidden="true"><i class="orb o1"></i><i class="orb o2"></i><i class="orb o3"></i></div>
+  <!-- ikonlar -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <defs>
+      <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/></symbol>
+      <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="2"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="2"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="2"/></symbol>
+      <symbol id="i-cart" viewBox="0 0 24 24"><path d="M3 4h2.2l2.1 11.2a2 2 0 0 0 2 1.6h8.2a2 2 0 0 0 2-1.5L21 8H6.1"/><circle cx="10" cy="20.2" r="1.3"/><circle cx="17.5" cy="20.2" r="1.3"/></symbol>
+      <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-7.5-4.6-9.2-9.6C1.6 7.3 4 4 7.4 4c2 0 3.6 1.1 4.6 2.7C13 5.1 14.6 4 16.6 4 20 4 22.4 7.3 21.2 10.9c-1.7 5-9.2 9.6-9.2 9.6z"/></symbol>
+      <symbol id="i-box" viewBox="0 0 24 24"><path d="M3.5 7.5 12 3l8.5 4.5v9L12 21l-8.5-4.5z"/><path d="M3.5 7.5 12 12l8.5-4.5M12 12v9"/></symbol>
+      <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20.5 20.5-4.6-4.6"/></symbol>
+      <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10M10 18h4"/></symbol>
+      <symbol id="i-sort" viewBox="0 0 24 24"><path d="M7 4v16M3.5 16.5 7 20l3.5-3.5M17 20V4m-3.5 3.5L17 4l3.5 3.5"/></symbol>
+      <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></symbol>
+      <symbol id="i-chev" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+      <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+      <symbol id="i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+      <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+      <symbol id="i-compare" viewBox="0 0 24 24"><path d="M7 4 3 8l4 4M3 8h14M17 12l4 4-4 4m4-4H7"/></symbol>
+      <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 16V11a6 6 0 1 1 12 0v5l1.5 2h-15zM10 20.5a2 2 0 0 0 4 0"/></symbol>
+      <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3 4.5 6v5.5c0 4.6 3.2 8.4 7.5 9.5 4.3-1.1 7.5-4.9 7.5-9.5V6z"/><path d="m8.8 12 2.2 2.2 4.4-4.4"/></symbol>
+      <symbol id="i-truck" viewBox="0 0 24 24"><path d="M2.5 6h11v10h-11zM13.5 9.5h4.2l3.3 3.4V16h-7.5"/><circle cx="6.5" cy="17.5" r="1.8"/><circle cx="17" cy="17.5" r="1.8"/></symbol>
+      <symbol id="i-store" viewBox="0 0 24 24"><path d="M4 9.5V20h16V9.5M3 9.5 4.8 4h14.4L21 9.5c0 1.4-1.2 2.5-2.6 2.5s-2.7-1.1-2.7-2.5c0 1.4-1.2 2.5-2.6 2.5h-2.2c-1.4 0-2.6-1.1-2.6-2.5 0 1.4-1.3 2.5-2.7 2.5S3 10.9 3 9.5zM10 20v-5h4v5"/></symbol>
+      <symbol id="i-chat" viewBox="0 0 24 24"><path d="M4 5.5h16v10.5H9.5L5 20v-4H4z"/></symbol>
+      <symbol id="i-alert" viewBox="0 0 24 24"><path d="M12 3.5 21.5 20h-19z"/><path d="M12 10v4.5M12 17.3v.2"/></symbol>
+      <symbol id="i-return" viewBox="0 0 24 24"><path d="M9 7H4V2"/><path d="M4.5 7A8.5 8.5 0 1 1 3.8 15"/></symbol>
+      <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 8h4l1.8-2.5h6.4L17 8h4v11H3z"/><circle cx="12" cy="13.3" r="3.6"/></symbol>
+      <symbol id="i-star" viewBox="0 0 24 24"><path d="m12 3.5 2.6 5.4 5.9.8-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.8z"/></symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-6.5-6.2-6.5-11.2A6.5 6.5 0 0 1 18.5 9.8C18.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.8" r="2.4"/></symbol>
+      <symbol id="i-send" viewBox="0 0 24 24"><path d="M21 3 3 10.5l7 2.5 2.5 7z"/><path d="m10 13 4-4"/></symbol>
+      <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></symbol>
+      <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2.5 4.5 13.5H11L10 21.5l8.5-11H12z"/></symbol>
+      <symbol id="i-cash" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/></symbol>
+      <symbol id="i-card" viewBox="0 0 24 24"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 9.5h19M6 15h4"/></symbol>
+    </defs>
+  </svg>
+
+  <div class="bg" aria-hidden="true"><i class="glow g1"></i><i class="glow g2"></i><i class="glow g3"></i><i class="grain"></i></div>
+
   <div id="app">
-    <!-- ===== MENYU ===== -->
-    <section class="view active" id="view-menu">
-      <header class="hero">
-        <div class="lang-switch" id="lang-switch">
-          <button data-lang="uz">UZ</button><button data-lang="ru">RU</button>
-        </div>
-        <div class="crown">♛</div>
-        <h1 class="logo">Yaproq go'sht</h1>
-        <p class="tagline">BURGER • COFFEE • GOOD MOOD</p>
-        <div class="closed-banner hidden" id="closed-banner"></div>
-      </header>
-      <div class="search">
-        <span class="search-ico">🔍</span>
-        <input id="search" type="search" autocomplete="off" data-i18n-ph="search">
-        <button class="search-clear hidden" id="search-clear" aria-label="clear">✕</button>
-      </div>
-      <nav class="cats" id="cats"></nav>
-      <div id="menu-list" class="menu-list">
-        <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
-      </div>
-      <footer class="perks">
-        <span data-i18n="perk1"></span><span data-i18n="perk2"></span><span data-i18n="perk3"></span>
-      </footer>
-    </section>
-
-    <!-- ===== SAVAT ===== -->
-    <section class="view" id="view-cart">
-      <div class="page-head"><h2 data-i18n="cart"></h2><button class="link-btn" id="clear-cart" data-i18n="clear"></button></div>
-      <div id="cart-list"></div>
-      <div id="cart-summary" class="summary"></div>
-      <button class="primary-btn hidden" id="to-checkout" data-i18n="checkout"></button>
-    </section>
-
-    <!-- ===== RASMIYLASHTIRISH ===== -->
-    <section class="view" id="view-checkout">
-      <div class="page-head"><h2 data-i18n="checkoutTitle"></h2></div>
-      <form id="checkout-form" novalidate>
-        <div class="segmented" id="type-seg">
-          <button type="button" data-type="delivery" data-i18n="delivery"></button>
-          <button type="button" data-type="pickup" data-i18n="pickup"></button>
-        </div>
-
-        <label class="field">
-          <span data-i18n="name"></span>
-          <input name="name" id="f-name" autocomplete="name" data-i18n-ph="namePh" maxlength="64" required>
-        </label>
-        <label class="field">
-          <span data-i18n="phone"></span>
-          <div class="phone-input">
-            <span class="prefix">+998</span>
-            <input name="phone" id="f-phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="90 123 45 67" maxlength="12" required>
-          </div>
-        </label>
-
-        <div id="delivery-block">
-          <label class="field">
-            <span data-i18n="address"></span>
-            <textarea name="address" id="f-address" rows="2" data-i18n-ph="addressPh" maxlength="300" required></textarea>
-          </label>
-          <button type="button" class="ghost-btn" id="geo-btn" data-i18n="geo"></button>
-        </div>
-        <div class="pickup-box hidden" id="pickup-block"></div>
-
-        <div class="field"><span data-i18n="when"></span></div>
-        <div class="segmented" id="time-seg">
-          <button type="button" data-time="asap" data-i18n="asap"></button>
-          <button type="button" data-time="later" data-i18n="later"></button>
-        </div>
-        <div id="slot-picker" class="slot-picker hidden">
-          <div class="chips" id="slot-days"></div>
-          <div class="chips times" id="slot-times"></div>
-        </div>
-
-        <label class="field">
-          <span data-i18n="comment"></span>
-          <textarea name="comment" id="f-comment" rows="2" data-i18n-ph="commentPh" maxlength="300"></textarea>
-        </label>
-
-        <div class="field"><span data-i18n="promo"></span></div>
-        <div class="promo-row">
-          <input id="f-promo" autocomplete="off" autocapitalize="characters" data-i18n-ph="promoPh" maxlength="32">
-          <button type="button" class="promo-btn" id="promo-apply" data-i18n="apply"></button>
-        </div>
-        <p class="promo-msg hidden" id="promo-msg"></p>
-
-        <div class="field"><span data-i18n="payment"></span></div>
-        <div class="pay-options">
-          <label class="pay-option">
-            <input type="radio" name="payment" value="cash" checked>
-            <div class="pay-body"><b data-i18n="cash"></b><small data-i18n="cashSub"></small></div>
-          </label>
-          <label class="pay-option disabled" aria-disabled="true">
-            <input type="radio" name="payment" value="card" disabled>
-            <div class="pay-body"><b data-i18n="card"></b><small>Click / Payme</small></div>
-            <span class="soon" data-i18n="soon"></span>
-          </label>
-        </div>
-
-        <div id="checkout-summary" class="summary"></div>
-        <p class="form-error hidden" id="form-error"></p>
-        <button type="submit" class="primary-btn" id="submit-btn" data-i18n="confirm"></button>
-      </form>
-    </section>
-
-    <!-- ===== MUVAFFAQIYAT ===== -->
-    <section class="view" id="view-success">
-      <div class="success">
-        <div class="success-icon">✓</div>
-        <h2 data-i18n="placed"></h2>
-        <p data-i18n="orderId"></p>
-        <div class="code-badge" id="success-code"></div>
-        <p class="muted" data-i18n="placedSub"></p>
-        <button class="primary-btn" id="track-btn" data-i18n="track"></button>
-        <button class="ghost-btn" data-go="menu" data-i18n="backToMenu"></button>
-      </div>
-    </section>
-
-    <!-- ===== BUYURTMALAR ===== -->
-    <section class="view" id="view-orders">
-      <div class="page-head"><h2 data-i18n="myOrders"></h2></div>
-      <div id="orders-list"></div>
-    </section>
-
-    <!-- ===== BUYURTMA TAFSILOTI ===== -->
-    <section class="view" id="view-order">
-      <div id="order-detail"></div>
-    </section>
+    <main id="view" class="view"></main>
   </div>
 
-  <!-- Mahsulot oynasi -->
-  <div class="sheet-backdrop hidden" id="sheet-backdrop"></div>
-  <div class="sheet" id="sheet" aria-hidden="true"></div>
-
-  <!-- Pastki panel -->
-  <div class="cart-bar hidden" id="cart-bar">
-    <span id="cart-bar-count"></span>
-    <b id="cart-bar-total"></b>
-    <span class="cart-bar-go"><span data-i18n="cart"></span> <span aria-hidden="true">→</span></span>
-  </div>
-  <nav class="tabbar">
-    <button data-go="menu" class="active"><i>🍔</i><span data-i18n="tabMenu"></span></button>
-    <button data-go="cart"><i>🛒</i><span data-i18n="cart"></span><em class="badge hidden" id="cart-badge">0</em></button>
-    <button data-go="orders"><i>📦</i><span data-i18n="tabOrders"></span></button>
+  <!-- pastki "Dock" -->
+  <nav class="dock glass" id="dock" aria-label="menu">
+    <button data-tab="home"><span class="dock-ico"><svg><use href="#i-home"/></svg></span><b data-i18n="tabHome"></b></button>
+    <button data-tab="catalog"><span class="dock-ico"><svg><use href="#i-grid"/></svg></span><b data-i18n="tabCatalog"></b></button>
+    <button data-tab="cart"><span class="dock-ico"><svg><use href="#i-cart"/></svg><em class="badge hidden" id="cart-badge"></em></span><b data-i18n="tabCart"></b></button>
+    <button data-tab="fav"><span class="dock-ico"><svg><use href="#i-heart"/></svg></span><b data-i18n="tabFav"></b></button>
+    <button data-tab="orders"><span class="dock-ico"><svg><use href="#i-box"/></svg><em class="badge dot hidden" id="orders-badge"></em></span><b data-i18n="tabOrders"></b></button>
   </nav>
+
+  <div class="sheet-backdrop hidden" id="sheet-backdrop"></div>
+  <section class="sheet glass hidden" id="sheet" role="dialog"></section>
   <div class="toast hidden" id="toast"></div>
 
   <script src="app.js?v={{v}}"></script>
