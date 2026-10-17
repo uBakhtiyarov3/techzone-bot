@@ -20,7 +20,7 @@ from aiogram.types import (
     RichTextPhoneNumber,
 )
 
-from .utils import PAYMENT_LABELS, TYPE_LABELS, fmt_dt, format_order, money, phone_fmt, status_label
+from .utils import PAYMENT_LABELS, TYPE_LABELS, format_order, item_title, money, phone_fmt, status_label
 
 log = logging.getLogger(__name__)
 
@@ -41,14 +41,12 @@ def rich_order(order: dict, items: list[dict], header: str = "") -> InputRichMes
         InputRichBlockSectionHeading(text=f"{header or '🧾 Buyurtma'} · {order['code']}", size=2),
         InputRichBlockParagraph(text=[RichTextBold(text=status_label(order["status"], otype)),
                                       f"  ·  {TYPE_LABELS[otype]}"]),
-        InputRichBlockParagraph(text=RichTextBold(text=f"⏰ VAQTGA: {fmt_dt(order['scheduled_at'])}")
-                                if order.get("scheduled_at") else "⚡ Imkon qadar tez"),
     ]
 
     # mahsulotlar jadvali
     rows = [[_cell("Mahsulot", header=True), _cell("Soni", "center", True), _cell("Summa", "right", True)]]
     for it in items:
-        name = it["name"] + (f" ({it['variant']})" if it["variant"] else "")
+        name = item_title(it) + (f"\nIMEI/SN: {it['serial']}" if it.get("serial") else "")
         rows.append([_cell(name), _cell(f"×{it['qty']}", "center"), _cell(money(it["price"] * it["qty"]), "right")])
     rows.append(_sum_row("Mahsulotlar", money(order["subtotal"])))
     if order.get("discount"):
@@ -67,6 +65,7 @@ def rich_order(order: dict, items: list[dict], header: str = "") -> InputRichMes
         [_cell("📞 Telefon"), _cell(RichTextPhoneNumber(text=phone, phone_number=phone.replace(" ", "")))],
     ]
     if otype == "delivery":
+        info.append([_cell("🗺 Hudud"), _cell(f"{order.get('region_name') or '—'} · {order.get('delivery_eta') or ''}")])
         info.append([_cell("📍 Manzil"), _cell(order["address"])])
     info.append([_cell("💵 To'lov"), _cell(PAYMENT_LABELS.get(order["payment_method"], order["payment_method"]))])
     if order.get("staff_name"):

@@ -1,4 +1,4 @@
-"""Kafe joylashuvi: Google Maps havolasidan koordinatalarni aniqlash (olib ketish uchun lokatsiya)."""
+"""Do'kon joylashuvi: Google Maps havolasidan koordinatalarni aniqlash (olib ketish uchun lokatsiya)."""
 import logging
 import re
 import time
@@ -34,7 +34,7 @@ async def resolve_map_url(url: str) -> tuple[float, float] | None:
         return coords
     try:
         timeout = aiohttp.ClientTimeout(total=10)
-        headers = {"User-Agent": "Mozilla/5.0 (compatible; YaproqBot/1.0)"}
+        headers = {"User-Agent": "Mozilla/5.0 (compatible; ShopBot/1.0)"}
         async with aiohttp.ClientSession(timeout=timeout, headers=headers) as s:
             async with s.get(url, allow_redirects=True, max_redirects=6) as r:
                 if coords := parse_coords(str(r.url)):
@@ -49,22 +49,22 @@ async def resolve_map_url(url: str) -> tuple[float, float] | None:
     return None
 
 
-async def cafe_location(force: bool = False) -> tuple[float, float] | None:
+async def shop_location(force: bool = False) -> tuple[float, float] | None:
     """Sozlamalardagi koordinata; bo'lmasa havoladan aniqlab, saqlab qo'yadi."""
     global _last_fail
     s = await db.get_settings()
     try:
-        if s.get("cafe_lat") and s.get("cafe_lng"):
-            return float(s["cafe_lat"]), float(s["cafe_lng"])
+        if s.get("shop_lat") and s.get("shop_lng"):
+            return float(s["shop_lat"]), float(s["shop_lng"])
     except ValueError:
         pass
-    url = (s.get("cafe_map_url") or "").strip()
+    url = (s.get("shop_map_url") or "").strip()
     if not url or (not force and time.time() - _last_fail < 600):
         return None
     coords = await resolve_map_url(url)
     if coords:
-        await db.set_setting("cafe_lat", f"{coords[0]:.6f}")
-        await db.set_setting("cafe_lng", f"{coords[1]:.6f}")
+        await db.set_setting("shop_lat", f"{coords[0]:.6f}")
+        await db.set_setting("shop_lng", f"{coords[1]:.6f}")
     else:
         _last_fail = time.time()
     return coords

@@ -1,4 +1,8 @@
-"""Mijozga ko'rinadigan matnlar: o'zbek (uz) va rus (ru). Xodim/menejer paneli o'zbekcha qoladi."""
+"""Mijozga ko'rinadigan matnlar: o'zbek (uz) va rus (ru). Xodim/menejer paneli o'zbekcha qoladi.
+
+Har bir matnda `{shop}` — do'kon nomi (brend sozlamasidan) avtomatik qo'yiladi.
+"""
+from .brand import SHOP
 from .catalog import norm_lang
 
 T: dict[str, dict[str, str]] = {
@@ -6,106 +10,134 @@ T: dict[str, dict[str, str]] = {
     "choose_lang": {"uz": "🌐 Tilni tanlang / Выберите язык:", "ru": "🌐 Tilni tanlang / Выберите язык:"},
     "lang_saved": {"uz": "✅ Til: O'zbekcha", "ru": "✅ Язык: Русский"},
     "greet": {
-        "uz": "👋 Assalomu alaykum, <b>{name}</b>!\n\n<b>Yaproq go'sht</b> — Burger • Coffee • Good mood 👑\n"
-              "Mazali, tez va siz uchun!",
-        "ru": "👋 Здравствуйте, <b>{name}</b>!\n\n<b>Yaproq go'sht</b> — Burger • Coffee • Good mood 👑\n"
-              "Вкусно, быстро и для вас!",
+        "uz": "👋 Assalomu alaykum, <b>{name}</b>!\n\n<b>{shop}</b> — smartfonlar, noutbuklar va gadjetlar "
+              "rasmiy kafolat bilan. O'zbekiston bo'ylab yetkazib beramiz 🚚",
+        "ru": "👋 Здравствуйте, <b>{name}</b>!\n\n<b>{shop}</b> — смартфоны, ноутбуки и гаджеты "
+              "с официальной гарантией. Доставляем по всему Узбекистану 🚚",
     },
     "account_created": {"uz": "✅ Siz uchun shaxsiy akkaunt avtomatik ochildi.",
                         "ru": "✅ Для вас автоматически создан личный аккаунт."},
-    "closed_now": {"uz": "⏸ Hozir yopiqmiz.", "ru": "⏸ Сейчас мы закрыты."},
-    "opens_at": {"uz": "Ochilamiz: {when}. Hozir ham vaqtga buyurtma berishingiz mumkin ⏰",
-                 "ru": "Откроемся: {when}. Уже сейчас можно оформить заказ ко времени ⏰"},
-    "opens_short": {"uz": "Ochilamiz: {when}.", "ru": "Откроемся: {when}."},
-    "how_order": {"uz": "Buyurtmani qanday berasiz? 👇", "ru": "Как будете заказывать? 👇"},
-    "ways_mini": {"uz": "🍔 <b>Mini ilova</b> — rasmli menyu va qulay savat.",
-                  "ru": "🍔 <b>Мини-приложение</b> — меню с фото и удобная корзина."},
-    "ways_bot": {"uz": "📋 <b>Botning o'zida</b> — tugmalar orqali, shu chatning ichida.",
-                 "ru": "📋 <b>Прямо в боте</b> — кнопками, в этом чате."},
-    "start_mini_btn": {"uz": "🍔 Mini ilovada buyurtma berish", "ru": "🍔 Заказать в мини-приложении"},
-    "start_bot_btn": {"uz": "📋 Botning o'zida buyurtma berish", "ru": "📋 Заказать прямо в боте"},
+    "closed_now": {"uz": "⏸ Hozir buyurtmalar vaqtincha qabul qilinmayapti.",
+                   "ru": "⏸ Сейчас заказы временно не принимаются."},
+    "after_hours": {"uz": "🌙 Hozir ish vaqtidan tashqari. Buyurtma bersangiz, operator {when} bog'lanadi.",
+                    "ru": "🌙 Сейчас нерабочее время. Оформите заказ — оператор свяжется {when}."},
+    "how_order": {"uz": "Xarid qilishning qulay usulini tanlang 👇", "ru": "Выберите удобный способ покупки 👇"},
+    "ways_mini": {"uz": "✨ <b>Ilova</b> — rasmli katalog, filtrlar, solishtirish va qulay savat.",
+                  "ru": "✨ <b>Приложение</b> — каталог с фото, фильтры, сравнение и удобная корзина."},
+    "ways_bot": {"uz": "💬 <b>Botning o'zida</b> — tugmalar orqali, shu chatning ichida.",
+                 "ru": "💬 <b>Прямо в боте</b> — кнопками, в этом чате."},
+    "start_mini_btn": {"uz": "✨ Do'konni ochish", "ru": "✨ Открыть магазин"},
+    "start_bot_btn": {"uz": "💬 Botda xarid qilish", "ru": "💬 Покупать в боте"},
     "main_menu": {"uz": "🏠 Asosiy menyu", "ru": "🏠 Главное меню"},
-    "open_mini_text": {"uz": "🍔 Mini ilovani ochish uchun pastdagi tugmani bosing 👇",
-                       "ru": "🍔 Нажмите кнопку ниже, чтобы открыть мини-приложение 👇"},
-    "open_mini_btn": {"uz": "🍔 Mini ilovani ochish", "ru": "🍔 Открыть мини-приложение"},
+    "open_mini_text": {"uz": "✨ Do'konni ochish uchun pastdagi tugmani bosing 👇",
+                       "ru": "✨ Нажмите кнопку ниже, чтобы открыть магазин 👇"},
+    "open_mini_btn": {"uz": "✨ Do'konni ochish", "ru": "✨ Открыть магазин"},
     "contact": {
-        "uz": "📞 <b>Biz bilan bog'lanish</b>\n\nTelefon: {phone}\nIsh vaqti: {hours}\n{address}\n"
-              "Savol va takliflaringizni shu yerga yozib qoldirishingiz ham mumkin.",
-        "ru": "📞 <b>Связаться с нами</b>\n\nТелефон: {phone}\nВремя работы: {hours}\n{address}\n"
-              "Вопросы и предложения можно написать прямо сюда.",
+        "uz": "📞 <b>{shop} bilan bog'lanish</b>\n\nTelefon: {phone}\nIsh vaqti: {hours}\n{address}{links}\n"
+              "Savollaringizni shu yerga yozib qoldirishingiz ham mumkin.",
+        "ru": "📞 <b>Связаться с {shop}</b>\n\nТелефон: {phone}\nВремя работы: {hours}\n{address}{links}\n"
+              "Вопросы можно написать прямо сюда.",
     },
     "phone_soon": {"uz": "tez orada qo'shiladi", "ru": "скоро добавим"},
     "address_line": {"uz": "📍 Manzil: {address}\n", "ru": "📍 Адрес: {address}\n"},
     "about": {
-        "uz": "👑 <b>Yaproq go'sht</b>\n<i>Good Food · Good Mood</i>\n\n"
-              "🌭 Hot-doglar · 🥖 Frensh hot-dog · 🍔 Burgerlar\n🌯 Donar va lavash · 🍟 Kartoshka fri · ☕ Kofe\n\n"
-              "✅ Yangi ingredientlar\n☕ Issiq kofe\n😊 Yaxshi kayfiyat\n\nSee you soon! ❤️",
-        "ru": "👑 <b>Yaproq go'sht</b>\n<i>Good Food · Good Mood</i>\n\n"
-              "🌭 Хотдоги · 🥖 Френч хотдог · 🍔 Бургеры\n🌯 Донар и лаваш · 🍟 Картошка фри · ☕ Кофе\n\n"
-              "✅ Свежие ингредиенты\n☕ Горячий кофе\n😊 Хорошее настроение\n\nSee you soon! ❤️",
+        "uz": "⚡️ <b>{shop}</b>\n<i>{tagline}</i>\n\n{about}\n\n"
+              "✅ Original mahsulotlar va rasmiy kafolat\n🚚 O'zbekiston bo'ylab yetkazib berish\n"
+              "🏬 Do'kondan olib ketish\n💬 Har bir buyurtma bo'yicha jonli chat",
+        "ru": "⚡️ <b>{shop}</b>\n<i>{tagline}</i>\n\n{about}\n\n"
+              "✅ Оригинальная техника и официальная гарантия\n🚚 Доставка по всему Узбекистану\n"
+              "🏬 Самовывоз из магазина\n💬 Живой чат по каждому заказу",
     },
     "feedback_sent": {"uz": "✅ Xabaringiz yuborildi. Tez orada javob beramiz!",
                       "ru": "✅ Сообщение отправлено. Скоро ответим!"},
     "help": {
-        "uz": "ℹ️ <b>Yordam</b>\n\n/start — botni qayta ishga tushirish\n/menu — menyu (bot ichida buyurtma)\n"
+        "uz": "ℹ️ <b>Yordam</b>\n\n/start — botni qayta ishga tushirish\n/catalog — katalog\n/search — qidiruv\n"
               "/cart — savat\n/orders — buyurtmalarim\n/lang — tilni o'zgartirish\n",
-        "ru": "ℹ️ <b>Помощь</b>\n\n/start — перезапустить бота\n/menu — меню (заказ в боте)\n"
+        "ru": "ℹ️ <b>Помощь</b>\n\n/start — перезапустить бота\n/catalog — каталог\n/search — поиск\n"
               "/cart — корзина\n/orders — мои заказы\n/lang — сменить язык\n",
     },
-    "reply_from_cafe": {"uz": "💬 <b>Yaproq go'sht javobi:</b>", "ru": "💬 <b>Ответ Yaproq go'sht:</b>"},
+    "reply_from_shop": {"uz": "💬 <b>{shop} javobi:</b>", "ru": "💬 <b>Ответ {shop}:</b>"},
 
     # ---------- reply tugmalar ----------
-    "b_menu_mini": {"uz": "🍔 Mini ilovada buyurtma", "ru": "🍔 Заказ в мини-приложении"},
-    "b_menu": {"uz": "📋 Menyu", "ru": "📋 Меню"},
+    "b_catalog": {"uz": "📱 Katalog", "ru": "📱 Каталог"},
+    "b_search": {"uz": "🔍 Qidiruv", "ru": "🔍 Поиск"},
     "b_cart": {"uz": "🛒 Savat", "ru": "🛒 Корзина"},
     "b_orders": {"uz": "📦 Buyurtmalarim", "ru": "📦 Мои заказы"},
+    "b_favorites": {"uz": "❤️ Sevimlilar", "ru": "❤️ Избранное"},
     "b_contact": {"uz": "📞 Aloqa", "ru": "📞 Контакты"},
     "b_about": {"uz": "ℹ️ Biz haqimizda", "ru": "ℹ️ О нас"},
     "b_lang": {"uz": "🌐 Til / Язык", "ru": "🌐 Til / Язык"},
     "b_back": {"uz": "⬅️ Asosiy menyu", "ru": "⬅️ Главное меню"},
 
-    # ---------- menyu ----------
-    "menu_title": {"uz": "📋 <b>Menyu</b>\n\nKategoriyani tanlang 👇", "ru": "📋 <b>Меню</b>\n\nВыберите категорию 👇"},
-    "choose_product": {"uz": "Mahsulotni tanlang 👇", "ru": "Выберите блюдо 👇"},
-    "cat_empty": {"uz": "Bu kategoriya hozircha bo'sh.", "ru": "В этой категории пока пусто."},
+    # ---------- katalog ----------
+    "catalog_title": {"uz": "📱 <b>Katalog</b>\n\nKategoriyani tanlang 👇", "ru": "📱 <b>Каталог</b>\n\nВыберите категорию 👇"},
+    "choose_product": {"uz": "Mahsulotni tanlang 👇", "ru": "Выберите товар 👇"},
+    "all_brands": {"uz": "Barchasi", "ru": "Все"},
+    "cat_empty": {"uz": "Bu bo'limda hozircha mahsulot yo'q.", "ru": "В этом разделе пока нет товаров."},
     "back_cats": {"uz": "⬅️ Kategoriyalar", "ru": "⬅️ Категории"},
     "back": {"uz": "⬅️ Ortga", "ru": "⬅️ Назад"},
-    "cart_btn": {"uz": "🛒 Savat ({count} ta · {sum})", "ru": "🛒 Корзина ({count} шт · {sum})"},
+    "cart_btn": {"uz": "🛒 Savat ({count} · {sum})", "ru": "🛒 Корзина ({count} · {sum})"},
     "orders_btn": {"uz": "📦 Buyurtmalarim", "ru": "📦 Мои заказы"},
-    "mini_inline": {"uz": "🍔 Mini ilovada ochish", "ru": "🍔 Открыть мини-приложение"},
+    "mini_inline": {"uz": "✨ Ilovada ochish", "ru": "✨ Открыть в приложении"},
     "from": {"uz": "dan ", "ru": "от "},
-    "chosen": {"uz": "Tanlandi", "ru": "Выбрано"},
     "pcs": {"uz": "{n} ta", "ru": "{n} шт"},
-    "add_btn": {"uz": "🛒 Savatga qo'shish · {sum}", "ru": "🛒 В корзину · {sum}"},
+    "add_btn": {"uz": "🛒 Savatga · {sum}", "ru": "🛒 В корзину · {sum}"},
     "added": {"uz": "✅ <b>{item}</b> savatga qo'shildi!", "ru": "✅ <b>{item}</b> добавлен в корзину!"},
     "added_toast": {"uz": "✅ Savatga qo'shildi", "ru": "✅ Добавлено в корзину"},
-    "unavailable": {"uz": "Bu mahsulot hozir mavjud emas", "ru": "Это блюдо сейчас недоступно"},
-    "qty_limit": {"uz": "1 dan 50 tagacha", "ru": "От 1 до 50"},
+    "unavailable": {"uz": "Bu mahsulot hozir sotuvda yo'q", "ru": "Этого товара сейчас нет в продаже"},
+    "qty_limit": {"uz": "Omborda shuncha qolgan", "ru": "Больше нет на складе"},
+    "in_stock": {"uz": "✅ Sotuvda bor", "ru": "✅ В наличии"},
+    "low_stock": {"uz": "⚡️ Oz qoldi: {n} ta", "ru": "⚡️ Осталось: {n} шт"},
+    "out_of_stock": {"uz": "⛔️ Sotuvda yo'q", "ru": "⛔️ Нет в наличии"},
+    "warranty": {"uz": "🛡 Kafolat: {w}", "ru": "🛡 Гарантия: {w}"},
+    "specs_btn": {"uz": "📋 Xarakteristikalar", "ru": "📋 Характеристики"},
+    "specs_title": {"uz": "📋 <b>{name}</b> — xarakteristikalar", "ru": "📋 <b>{name}</b> — характеристики"},
+    "photos_btn": {"uz": "🖼 Rasmlar ({n})", "ru": "🖼 Фото ({n})"},
+    "fav_add_btn": {"uz": "🤍 Sevimlilarga", "ru": "🤍 В избранное"},
+    "fav_del_btn": {"uz": "❤️ Sevimlilarda", "ru": "❤️ В избранном"},
+    "fav_added": {"uz": "❤️ Sevimlilarga qo'shildi", "ru": "❤️ Добавлено в избранное"},
+    "fav_removed": {"uz": "Sevimlilardan olib tashlandi", "ru": "Удалено из избранного"},
+    "favorites_title": {"uz": "❤️ <b>Sevimlilar</b>", "ru": "❤️ <b>Избранное</b>"},
+    "favorites_empty": {"uz": "❤️ Sevimlilar ro'yxati bo'sh.\n\nMahsulot kartasida 🤍 tugmasini bosing.",
+                        "ru": "❤️ Список избранного пуст.\n\nНажмите 🤍 в карточке товара."},
+    "alert_btn": {"uz": "🔔 Kelganda xabar berish", "ru": "🔔 Сообщить о поступлении"},
+    "alert_on": {"uz": "🔔 Sotuvga chiqqanda xabar beramiz", "ru": "🔔 Сообщим, когда появится"},
+    "back_in_stock": {"uz": "🔔 <b>Sotuvga chiqdi!</b>\n\n{item} yana mavjud. Tezroq buyurtma bering 👇",
+                      "ru": "🔔 <b>Снова в продаже!</b>\n\n{item} снова в наличии. Успейте заказать 👇"},
+    "view_btn": {"uz": "👀 Ko'rish", "ru": "👀 Посмотреть"},
+
+    # ---------- qidiruv ----------
+    "search_ask": {"uz": "🔍 Nima qidiryapsiz? Model yoki brend nomini yozing (masalan: <i>iPhone 15</i>).",
+                   "ru": "🔍 Что ищете? Напишите модель или бренд (например: <i>iPhone 15</i>)."},
+    "search_results": {"uz": "🔍 «{q}» bo'yicha natijalar:", "ru": "🔍 Результаты по «{q}»:"},
+    "search_empty": {"uz": "🔍 «{q}» bo'yicha hech narsa topilmadi. Boshqacha yozib ko'ring.",
+                     "ru": "🔍 По «{q}» ничего не найдено. Попробуйте по-другому."},
 
     # ---------- savat ----------
-    "cart_empty": {"uz": "🛒 Savatingiz bo'sh.\n\nMenyudan mahsulot tanlang 👇",
-                   "ru": "🛒 Корзина пуста.\n\nВыберите что-нибудь в меню 👇"},
-    "to_menu": {"uz": "📋 Menyuga o'tish", "ru": "📋 Перейти в меню"},
+    "cart_empty": {"uz": "🛒 Savatingiz bo'sh.\n\nKatalogdan mahsulot tanlang 👇",
+                   "ru": "🛒 Корзина пуста.\n\nВыберите товар в каталоге 👇"},
+    "to_catalog": {"uz": "📱 Katalogga o'tish", "ru": "📱 Перейти в каталог"},
     "cart_title": {"uz": "🛒 <b>Savat</b>", "ru": "🛒 <b>Корзина</b>"},
     "items_sum": {"uz": "Mahsulotlar", "ru": "Товары"},
     "delivery": {"uz": "Yetkazib berish", "ru": "Доставка"},
     "free": {"uz": "bepul", "ru": "бесплатно"},
     "discount": {"uz": "Chegirma", "ru": "Скидка"},
     "total": {"uz": "Jami", "ru": "Итого"},
-    "min_order_warn": {"uz": "⚠️ Yetkazib berish uchun minimal buyurtma: {min}.",
-                       "ru": "⚠️ Минимальный заказ на доставку: {min}."},
+    "min_order_warn": {"uz": "⚠️ Minimal buyurtma: {min}.", "ru": "⚠️ Минимальный заказ: {min}."},
     "clear": {"uz": "🗑 Tozalash", "ru": "🗑 Очистить"},
-    "menu_btn": {"uz": "📋 Menyu", "ru": "📋 Меню"},
-    "checkout_btn": {"uz": "✅ Buyurtma berish · {sum}", "ru": "✅ Оформить · {sum}"},
+    "catalog_btn": {"uz": "📱 Katalog", "ru": "📱 Каталог"},
+    "checkout_btn": {"uz": "✅ Rasmiylashtirish · {sum}", "ru": "✅ Оформить · {sum}"},
     "cart_cleared": {"uz": "🗑 Savat tozalandi.", "ru": "🗑 Корзина очищена."},
+    "stock_trimmed": {"uz": "⚠️ Ba'zi mahsulotlar soni ombordagi qoldiqqa moslab kamaytirildi.",
+                      "ru": "⚠️ Количество некоторых товаров уменьшено по остатку на складе."},
 
     # ---------- rasmiylashtirish ----------
-    "co_cancel": {"uz": "❌ Buyurtmani bekor qilish", "ru": "❌ Отменить оформление"},
+    "co_cancel": {"uz": "❌ Bekor qilish", "ru": "❌ Отменить оформление"},
     "co_skip": {"uz": "➡️ O'tkazib yuborish", "ru": "➡️ Пропустить"},
     "co_title": {"uz": "📝 <b>Buyurtmani rasmiylashtirish</b>", "ru": "📝 <b>Оформление заказа</b>"},
     "ask_type": {"uz": "Buyurtmani qanday olasiz?", "ru": "Как получите заказ?"},
-    "type_delivery": {"uz": "🛵 Yetkazib berish", "ru": "🛵 Доставка"},
-    "type_pickup": {"uz": "🏃 Olib ketish", "ru": "🏃 Самовывоз"},
+    "type_delivery": {"uz": "🚚 Yetkazib berish", "ru": "🚚 Доставка"},
+    "type_pickup": {"uz": "🏬 Do'kondan olib ketish", "ru": "🏬 Самовывоз из магазина"},
     "ask_name": {"uz": "👤 Qabul qiluvchining <b>ismini</b> yozing:", "ru": "👤 Напишите <b>имя</b> получателя:"},
     "bad_name": {"uz": "Ism 2 dan 64 belgigacha bo'lsin. Qaytadan yozing:",
                  "ru": "Имя должно быть от 2 до 64 символов. Напишите ещё раз:"},
@@ -116,34 +148,32 @@ T: dict[str, dict[str, str]] = {
     "send_phone_btn": {"uz": "📱 Raqamimni yuborish", "ru": "📱 Отправить мой номер"},
     "bad_phone": {"uz": "❗️ Raqam noto'g'ri. Masalan: <code>+998 90 123 45 67</code>",
                   "ru": "❗️ Неверный номер. Например: <code>+998 90 123 45 67</code>"},
-    "ask_address": {"uz": "📍 <b>Yetkazish manzilini</b> yozing (ko'cha, uy, mo'ljal) yoki joylashuvingizni yuboring:",
-                    "ru": "📍 Напишите <b>адрес доставки</b> (улица, дом, ориентир) или отправьте геолокацию:"},
+    "ask_region": {"uz": "🗺 <b>Viloyatni tanlang</b> — yetkazish narxi va muddati shunga bog'liq:",
+                   "ru": "🗺 <b>Выберите регион</b> — от него зависят стоимость и срок доставки:"},
+    "region_line": {"uz": "{name} · {fee} · {eta}", "ru": "{name} · {fee} · {eta}"},
+    "ask_address": {"uz": "📍 <b>Yetkazish manzilini</b> yozing (shahar/tuman, ko'cha, uy, mo'ljal) "
+                          "yoki joylashuvingizni yuboring:",
+                    "ru": "📍 Напишите <b>адрес доставки</b> (город/район, улица, дом, ориентир) "
+                          "или отправьте геолокацию:"},
     "send_location_btn": {"uz": "📍 Joylashuvni yuborish", "ru": "📍 Отправить геолокацию"},
     "location_ok": {"uz": "Joylashuv qabul qilindi ✅", "ru": "Геолокация получена ✅"},
     "location_label": {"uz": "📍 Lokatsiya", "ru": "📍 Геолокация"},
     "bad_address": {"uz": "❗️ Manzilni to'liqroq yozing (kamida 5 belgi):",
                     "ru": "❗️ Напишите адрес подробнее (минимум 5 символов):"},
-    "ask_time": {"uz": "⏰ <b>Qachonga tayyorlaylik?</b>", "ru": "⏰ <b>К какому времени приготовить?</b>"},
-    "asap": {"uz": "⚡ Imkon qadar tez", "ru": "⚡ Как можно скорее"},
-    "today": {"uz": "📅 Bugun", "ru": "📅 Сегодня"},
-    "tomorrow": {"uz": "📅 Ertaga", "ru": "📅 Завтра"},
-    "pick_time": {"uz": "🕒 Vaqtni tanlang ({day}):", "ru": "🕒 Выберите время ({day}):"},
-    "no_slots": {"uz": "Afsuski, bugun buyurtma uchun bo'sh vaqt qolmadi. Ertaga ish vaqtida buyurtma bering.",
-                 "ru": "К сожалению, на сегодня свободного времени не осталось. Закажите завтра в рабочее время."},
-    "ask_comment": {"uz": "💬 <b>Izoh</b> (ixtiyoriy)\n\nManzil bo'yicha (podyezd, qavat, domofon) yoki "
-                          "ovqat bo'yicha (piyozsiz, achchiqroq, sousni alohida...) istaklaringizni yozing.",
-                    "ru": "💬 <b>Комментарий</b> (необязательно)\n\nПо адресу (подъезд, этаж, домофон) или "
-                          "по блюдам (без лука, поострее, соус отдельно...)."},
+    "ask_comment": {"uz": "💬 <b>Izoh</b> (ixtiyoriy)\n\nMasalan: qo'ng'iroq qilishdan oldin yozing, "
+                          "podyezd, qavat yoki qulay vaqt.",
+                    "ru": "💬 <b>Комментарий</b> (необязательно)\n\nНапример: напишите перед звонком, "
+                          "подъезд, этаж или удобное время."},
     "ask_promo": {"uz": "🎁 <b>Promo-kodingiz bormi?</b>\nKodni yozing yoki o'tkazib yuboring.",
                   "ru": "🎁 <b>Есть промокод?</b>\nНапишите его или пропустите."},
     "promo_ok": {"uz": "✅ Promo-kod qo'llandi: <b>{code}</b> — {label}", "ru": "✅ Промокод применён: <b>{code}</b> — {label}"},
     "ask_payment": {"uz": "💳 <b>To'lov usulini tanlang:</b>", "ru": "💳 <b>Выберите способ оплаты:</b>"},
-    "payment_hint": {"uz": "Hozircha naqd to'lov mavjud. Karta orqali to'lov tez kunda qo'shiladi.",
-                     "ru": "Пока доступна оплата наличными. Оплата картой скоро появится."},
+    "payment_hint": {"uz": "Hozircha qabul qilganda naqd to'lov. Click va Payme orqali to'lov tez kunda.",
+                     "ru": "Пока оплата наличными при получении. Click и Payme — скоро."},
     "pay_cash": {"uz": "💵 Naqd", "ru": "💵 Наличные"},
     "pay_card": {"uz": "💳 Karta · tez kunda", "ru": "💳 Карта · скоро"},
-    "pay_card_alert": {"uz": "💳 Karta orqali to'lov tez kunda ishga tushadi! Hozircha naqd to'lovni tanlang.",
-                       "ru": "💳 Оплата картой скоро появится! Пока выберите наличные."},
+    "pay_card_alert": {"uz": "💳 Click/Payme orqali to'lov tez kunda ishga tushadi! Hozircha naqd to'lovni tanlang.",
+                       "ru": "💳 Оплата через Click/Payme скоро появится! Пока выберите наличные."},
     "check_title": {"uz": "🧾 <b>Buyurtmani tekshiring</b>", "ru": "🧾 <b>Проверьте заказ</b>"},
     "payment": {"uz": "To'lov", "ru": "Оплата"},
     "confirm_btn": {"uz": "✅ Tasdiqlash", "ru": "✅ Подтвердить"},
@@ -154,22 +184,21 @@ T: dict[str, dict[str, str]] = {
     "form_stale": {"uz": "Bu forma eskirgan. Savatdan qaytadan rasmiylashtiring.",
                    "ru": "Эта форма устарела. Оформите заказ заново из корзины."},
     "order_placed": {"uz": "🎉 <b>Buyurtmangiz qabul qilindi!</b>\n\nBuyurtma ID: <code>{code}</code>\nJami: <b>{total}</b>\n\n"
-                           "Holat o'zgarganda shu yerda xabar beramiz.",
+                           "Operator tez orada bog'lanadi. Holat o'zgarganda shu yerda xabar beramiz.",
                      "ru": "🎉 <b>Заказ принят!</b>\n\nНомер заказа: <code>{code}</code>\nИтого: <b>{total}</b>\n\n"
-                           "Сообщим здесь, когда статус изменится."},
+                           "Оператор скоро свяжется с вами. Сообщим здесь, когда статус изменится."},
     "order_sent_toast": {"uz": "✅ Buyurtma yuborildi!", "ru": "✅ Заказ отправлен!"},
     "thanks": {"uz": "Rahmat! 😊", "ru": "Спасибо! 😊"},
-    "pickup_from": {"uz": "🏃 Olib ketish: {address}", "ru": "🏃 Самовывоз: {address}"},
-    "pickup_cafe": {"uz": "kafedan", "ru": "из кафе"},
+    "pickup_from": {"uz": "🏬 Olib ketish: {address}", "ru": "🏬 Самовывоз: {address}"},
+    "pickup_shop": {"uz": "do'kondan", "ru": "из магазина"},
     "pickup_location": {"uz": "📍 <b>Olib ketish manzili</b>{address}\n\nXaritadagi nuqtani bosib, yo'nalish olishingiz mumkin.",
                         "ru": "📍 <b>Адрес самовывоза</b>{address}\n\nНажмите на точку на карте, чтобы построить маршрут."},
     "map_btn": {"uz": "🗺 Google Maps'da ochish", "ru": "🗺 Открыть в Google Maps"},
-    "when_asap": {"uz": "⚡ Imkon qadar tez", "ru": "⚡ Как можно скорее"},
-    "when_at": {"uz": "⏰ Vaqtga: {when}", "ru": "⏰ Ко времени: {when}"},
+    "eta_line": {"uz": "⏱ Yetkazish muddati: {eta}", "ru": "⏱ Срок доставки: {eta}"},
 
     # ---------- buyurtmalar ----------
-    "no_orders": {"uz": "Sizda hali buyurtmalar yo'q. Keling, birinchisini beramiz! 🍔",
-                  "ru": "У вас пока нет заказов. Давайте сделаем первый! 🍔"},
+    "no_orders": {"uz": "Sizda hali buyurtmalar yo'q. Katalogga nazar soling! 📱",
+                  "ru": "У вас пока нет заказов. Загляните в каталог! 📱"},
     "orders_title": {"uz": "📦 <b>Buyurtmalarim</b>\n\nBatafsil ko'rish uchun tanlang:",
                      "ru": "📦 <b>Мои заказы</b>\n\nВыберите для подробностей:"},
     "order_title": {"uz": "🧾 <b>Buyurtma</b> <code>{code}</code>", "ru": "🧾 <b>Заказ</b> <code>{code}</code>"},
@@ -180,40 +209,61 @@ T: dict[str, dict[str, str]] = {
     "repeat_btn": {"uz": "🔁 Qayta buyurtma berish", "ru": "🔁 Повторить заказ"},
     "back_orders": {"uz": "⬅️ Buyurtmalarim", "ru": "⬅️ Мои заказы"},
     "order_not_found": {"uz": "Buyurtma topilmadi", "ru": "Заказ не найден"},
-    "cancel_not_allowed": {"uz": "Buyurtma allaqachon qabul qilingan — bekor qilish uchun kafe bilan bog'laning.",
-                           "ru": "Заказ уже принят — для отмены свяжитесь с кафе."},
+    "cancel_not_allowed": {"uz": "Buyurtma allaqachon qabul qilingan — bekor qilish uchun chatda yozing.",
+                           "ru": "Заказ уже принят — для отмены напишите в чат."},
     "order_cancelled_toast": {"uz": "Buyurtma bekor qilindi", "ru": "Заказ отменён"},
-    "repeat_added": {"uz": "🔁 Oldingi buyurtma savatga qo'shildi (narxlar joriy menyu bo'yicha).",
+    "repeat_added": {"uz": "🔁 Oldingi buyurtma savatga qo'shildi (narxlar joriy).",
                      "ru": "🔁 Прошлый заказ добавлен в корзину (по текущим ценам)."},
-    "repeat_none": {"uz": "Afsuski, bu buyurtmadagi mahsulotlar hozir mavjud emas.",
-                    "ru": "К сожалению, блюд из этого заказа сейчас нет."},
+    "repeat_none": {"uz": "Afsuski, bu buyurtmadagi mahsulotlar hozir sotuvda yo'q.",
+                    "ru": "К сожалению, товаров из этого заказа сейчас нет в продаже."},
     "your_rating": {"uz": "Sizning bahoingiz: {stars}", "ru": "Ваша оценка: {stars}"},
     "rate_btn": {"uz": "⭐ Baholash", "ru": "⭐ Оценить"},
+    "warranty_card": {"uz": "🛡 <b>Kafolat</b>", "ru": "🛡 <b>Гарантия</b>"},
+    "warranty_until": {"uz": "{item}: {until} gacha{serial}", "ru": "{item}: до {until}{serial}"},
+    "media_btn": {"uz": "🖼 Holat rasmlari ({n})", "ru": "🖼 Фото статуса ({n})"},
+    "chat_btn": {"uz": "💬 Do'konga yozish", "ru": "💬 Написать магазину"},
+    "chat_btn_unread": {"uz": "💬 Chat ({n} yangi)", "ru": "💬 Чат ({n} новых)"},
+
+    # ---------- buyurtma chati ----------
+    "chat_ask": {"uz": "💬 <b>{code}</b> buyurtmasi bo'yicha xabaringizni yozing (matn yoki rasm). "
+                       "Do'kon xodimi shu yerda javob beradi.",
+                 "ru": "💬 Напишите сообщение по заказу <b>{code}</b> (текст или фото). "
+                       "Сотрудник магазина ответит здесь."},
+    "chat_sent": {"uz": "✅ Xabar yuborildi. Javobni shu yerda olasiz.", "ru": "✅ Сообщение отправлено. Ответ придёт сюда."},
+    "chat_history": {"uz": "💬 <b>{code}</b> — yozishma", "ru": "💬 <b>{code}</b> — переписка"},
+    "chat_empty": {"uz": "Hali xabarlar yo'q.", "ru": "Сообщений пока нет."},
+    "chat_you": {"uz": "Siz", "ru": "Вы"},
+    "chat_from_shop": {"uz": "💬 <b>{shop}</b> · buyurtma <code>{code}</code>:\n\n{text}",
+                       "ru": "💬 <b>{shop}</b> · заказ <code>{code}</code>:\n\n{text}"},
+    "chat_reply_btn": {"uz": "↩️ Javob yozish", "ru": "↩️ Ответить"},
+    "chat_end_btn": {"uz": "✅ Tayyor", "ru": "✅ Готово"},
 
     # ---------- bildirishnomalar ----------
-    "sent_new": {"uz": "🧾 Buyurtmangiz <code>{code}</code> qabul qilish uchun yuborildi!\n\n"
-                       "Holat o'zgarganda sizga shu yerda xabar beramiz.",
-                 "ru": "🧾 Ваш заказ <code>{code}</code> отправлен!\n\nСообщим здесь, когда статус изменится."},
+    "sent_new": {"uz": "🧾 Buyurtmangiz <code>{code}</code> qabul qilindi!\n\n"
+                       "Operator tez orada bog'lanadi. Holat o'zgarganda shu yerda xabar beramiz.",
+                 "ru": "🧾 Ваш заказ <code>{code}</code> принят!\n\n"
+                       "Оператор скоро свяжется с вами. Сообщим здесь, когда статус изменится."},
     "track_btn": {"uz": "📦 Buyurtmani kuzatish", "ru": "📦 Отследить заказ"},
-    "st_accepted": {"uz": "✅ Buyurtmangiz <code>{code}</code> qabul qilindi!",
-                    "ru": "✅ Ваш заказ <code>{code}</code> принят!"},
-    "st_cooking": {"uz": "👨‍🍳 Buyurtmangiz <code>{code}</code> tayyorlanmoqda...",
-                   "ru": "👨‍🍳 Ваш заказ <code>{code}</code> готовится..."},
-    "st_delivering": {"uz": "🛵 Buyurtmangiz <code>{code}</code> yo'lda! Kuryer tez orada yetib boradi.",
-                      "ru": "🛵 Ваш заказ <code>{code}</code> в пути! Курьер скоро будет."},
-    "st_delivering_pickup": {"uz": "🛍 Buyurtmangiz <code>{code}</code> tayyor! Olib ketishingiz mumkin.{address}",
-                             "ru": "🛍 Ваш заказ <code>{code}</code> готов! Можно забирать.{address}"},
-    "st_delivered": {"uz": "🎉 Buyurtmangiz <code>{code}</code> yetkazildi. Yoqimli ishtaha! 😊",
-                     "ru": "🎉 Ваш заказ <code>{code}</code> доставлен. Приятного аппетита! 😊"},
-    "st_delivered_pickup": {"uz": "🎉 Buyurtmangiz <code>{code}</code> berildi. Yoqimli ishtaha! 😊",
-                            "ru": "🎉 Ваш заказ <code>{code}</code> выдан. Приятного аппетита! 😊"},
+    "st_accepted": {"uz": "✅ Buyurtmangiz <code>{code}</code> tasdiqlandi!",
+                    "ru": "✅ Ваш заказ <code>{code}</code> подтверждён!"},
+    "st_packing": {"uz": "📦 Buyurtmangiz <code>{code}</code> yig'ilmoqda...",
+                   "ru": "📦 Ваш заказ <code>{code}</code> собирается..."},
+    "st_shipping": {"uz": "🚚 Buyurtmangiz <code>{code}</code> yo'lda!{eta}",
+                    "ru": "🚚 Ваш заказ <code>{code}</code> в пути!{eta}"},
+    "st_shipping_pickup": {"uz": "🛍 Buyurtmangiz <code>{code}</code> tayyor — olib ketishingiz mumkin!{address}",
+                           "ru": "🛍 Ваш заказ <code>{code}</code> готов — можно забирать!{address}"},
+    "st_delivered": {"uz": "🎉 Buyurtmangiz <code>{code}</code> yetkazildi. Xaridingiz muborak! 😊",
+                     "ru": "🎉 Ваш заказ <code>{code}</code> доставлен. Поздравляем с покупкой! 😊"},
+    "st_delivered_pickup": {"uz": "🎉 Buyurtmangiz <code>{code}</code> topshirildi. Xaridingiz muborak! 😊",
+                            "ru": "🎉 Ваш заказ <code>{code}</code> выдан. Поздравляем с покупкой! 😊"},
     "st_cancelled": {"uz": "❌ Afsuski, buyurtmangiz <code>{code}</code> bekor qilindi.{reason}\n"
                            "Savollar bo'lsa, biz bilan bog'laning.",
                      "ru": "❌ К сожалению, ваш заказ <code>{code}</code> отменён.{reason}\nЕсли есть вопросы — свяжитесь с нами."},
+    "status_photo": {"uz": "📸 Buyurtma <code>{code}</code> · {status}", "ru": "📸 Заказ <code>{code}</code> · {status}"},
 
     # ---------- baholash ----------
-    "rate_ask": {"uz": "⭐ <b>Buyurtmani baholang!</b>\nFikringiz biz uchun juda muhim.",
-                 "ru": "⭐ <b>Оцените заказ!</b>\nВаше мнение очень важно для нас."},
+    "rate_ask": {"uz": "⭐ <b>Xaridingizni baholang!</b>\nFikringiz biz uchun juda muhim.",
+                 "ru": "⭐ <b>Оцените покупку!</b>\nВаше мнение очень важно для нас."},
     "rate_thanks": {"uz": "Rahmat! 🙏 {stars}\n\nIzoh qoldirasizmi? Yozing yoki «O'tkazib yuborish»ni bosing.",
                     "ru": "Спасибо! 🙏 {stars}\n\nОставите комментарий? Напишите или нажмите «Пропустить»."},
     "review_saved": {"uz": "✅ Fikringiz uchun rahmat! Sizni yana kutamiz 😊",
@@ -224,11 +274,11 @@ T: dict[str, dict[str, str]] = {
     # ---------- holatlar (mijoz uchun) ----------
     "s_new": {"uz": "🕐 Tasdiqlash kutilmoqda", "ru": "🕐 Ожидает подтверждения"},
     "s_accepted": {"uz": "✅ Qabul qilindi", "ru": "✅ Принят"},
-    "s_cooking": {"uz": "👨‍🍳 Tayyorlanmoqda", "ru": "👨‍🍳 Готовится"},
-    "s_delivering": {"uz": "🛵 Yetkazilmoqda", "ru": "🛵 В пути"},
-    "s_delivering_pickup": {"uz": "🛍 Tayyor — olib keting", "ru": "🛍 Готов — можно забрать"},
+    "s_packing": {"uz": "📦 Yig'ilmoqda", "ru": "📦 Собирается"},
+    "s_shipping": {"uz": "🚚 Yo'lda", "ru": "🚚 В пути"},
+    "s_shipping_pickup": {"uz": "🛍 Tayyor — olib ketishingiz mumkin", "ru": "🛍 Готов — можно забирать"},
     "s_delivered": {"uz": "🎉 Yetkazildi", "ru": "🎉 Доставлен"},
-    "s_delivered_pickup": {"uz": "🎉 Berildi", "ru": "🎉 Выдан"},
+    "s_delivered_pickup": {"uz": "🎉 Topshirildi", "ru": "🎉 Выдан"},
     "s_cancelled": {"uz": "❌ Bekor qilindi", "ru": "❌ Отменён"},
     "step_new": {"uz": "Buyurtma berildi", "ru": "Заказ оформлен"},
 
@@ -236,26 +286,23 @@ T: dict[str, dict[str, str]] = {
     "e_empty_cart": {"uz": "Savat bo'sh", "ru": "Корзина пуста"},
     "e_too_many": {"uz": "Savatda juda ko'p mahsulot", "ru": "Слишком много позиций в корзине"},
     "e_cart": {"uz": "Savatda xato bor", "ru": "Ошибка в корзине"},
-    "e_qty": {"uz": "Mahsulot soni 1 dan 50 gacha bo'lishi kerak", "ru": "Количество — от 1 до 50"},
-    "e_unavailable": {"uz": "Savatdagi ba'zi mahsulotlar endi mavjud emas. Savatni yangilang.",
-                      "ru": "Некоторых блюд из корзины больше нет. Обновите корзину."},
-    "e_variant": {"uz": "Mahsulot o'lchami topilmadi. Savatni yangilang.",
-                  "ru": "Размер блюда не найден. Обновите корзину."},
-    "e_closed": {"uz": "Hozir yopiqmiz — vaqtni tanlab buyurtma bering.{next}",
-                 "ru": "Сейчас мы закрыты — выберите время заказа.{next}"},
+    "e_qty": {"uz": "Mahsulot soni 1 dan 20 gacha bo'lishi kerak", "ru": "Количество — от 1 до 20"},
+    "e_unavailable": {"uz": "Savatdagi ba'zi mahsulotlar endi sotuvda yo'q. Savatni yangilang.",
+                      "ru": "Некоторых товаров из корзины больше нет в продаже. Обновите корзину."},
+    "e_stock": {"uz": "«{item}» omborda {left} ta qoldi. Sonini kamaytiring.",
+                "ru": "«{item}» на складе осталось {left} шт. Уменьшите количество."},
     "e_closed_full": {"uz": "Hozir buyurtma qabul qilinmayapti.", "ru": "Сейчас заказы не принимаются."},
     "e_name": {"uz": "Qabul qiluvchi ismini kiriting", "ru": "Укажите имя получателя"},
     "e_phone": {"uz": "Telefon raqam noto'g'ri. Format: +998 90 123 45 67",
                 "ru": "Неверный телефон. Формат: +998 90 123 45 67"},
+    "e_region": {"uz": "Yetkazish viloyatini tanlang", "ru": "Выберите регион доставки"},
     "e_address": {"uz": "Manzilni to'liqroq kiriting", "ru": "Укажите адрес подробнее"},
     "e_card": {"uz": "Karta orqali to'lov tez kunda ishga tushadi. Hozircha naqd to'lovni tanlang.",
                "ru": "Оплата картой скоро появится. Пока выберите наличные."},
     "e_payment": {"uz": "To'lov usulini tanlang", "ru": "Выберите способ оплаты"},
-    "e_min_order": {"uz": "Yetkazib berish uchun minimal buyurtma: {min}", "ru": "Минимальный заказ на доставку: {min}"},
+    "e_min_order": {"uz": "Minimal buyurtma: {min}", "ru": "Минимальный заказ: {min}"},
     "e_cooldown": {"uz": "Iltimos, biroz kuting va qayta urinib ko'ring", "ru": "Подождите немного и попробуйте снова"},
-    "e_type": {"uz": "Bu buyurtma turi hozir mavjud emas", "ru": "Этот способ получения сейчас недоступен"},
-    "e_slot": {"uz": "Tanlangan vaqt endi mavjud emas. Boshqa vaqtni tanlang.",
-               "ru": "Выбранное время недоступно. Выберите другое."},
+    "e_type": {"uz": "Bu olish usuli hozir mavjud emas", "ru": "Этот способ получения сейчас недоступен"},
     "e_promo_not_found": {"uz": "Bunday promo-kod topilmadi", "ru": "Промокод не найден"},
     "e_promo_inactive": {"uz": "Bu promo-kod faol emas", "ru": "Промокод неактивен"},
     "e_promo_not_started": {"uz": "Bu promo-kod hali boshlanmagan", "ru": "Промокод ещё не действует"},
@@ -275,98 +322,152 @@ T: dict[str, dict[str, str]] = {
 
 # ---------- Mini App matnlari (w_ prefiksi bilan T ga qo'shiladi) ----------
 W: dict[str, dict[str, str]] = {
-    "search": {"uz": "Taom qidirish...", "ru": "Поиск блюд..."},
-    "searchEmpty": {"uz": "Hech narsa topilmadi", "ru": "Ничего не найдено"},
-    "perk1": {"uz": "🍔 Yangi ingredientlar", "ru": "🍔 Свежие ингредиенты"},
-    "perk2": {"uz": "☕ Issiq kofe", "ru": "☕ Горячий кофе"},
-    "perk3": {"uz": "😊 Yaxshi kayfiyat", "ru": "😊 Хорошее настроение"},
-    "tabMenu": {"uz": "Menyu", "ru": "Меню"},
+    "tabHome": {"uz": "Asosiy", "ru": "Главная"},
+    "tabCatalog": {"uz": "Katalog", "ru": "Каталог"},
+    "tabCart": {"uz": "Savat", "ru": "Корзина"},
+    "tabFav": {"uz": "Sevimli", "ru": "Избранное"},
     "tabOrders": {"uz": "Buyurtmalar", "ru": "Заказы"},
+    "search": {"uz": "Smartfon, noutbuk, brend...", "ru": "Смартфон, ноутбук, бренд..."},
+    "searchEmpty": {"uz": "Hech narsa topilmadi", "ru": "Ничего не найдено"},
+    "categories": {"uz": "Kategoriyalar", "ru": "Категории"},
+    "brands": {"uz": "Brendlar", "ru": "Бренды"},
+    "hits": {"uz": "Xit savdo", "ru": "Хиты продаж"},
+    "newArrivals": {"uz": "Yangi kelganlar", "ru": "Новинки"},
+    "deals": {"uz": "Chegirmalar", "ru": "Скидки"},
+    "seeAll": {"uz": "Barchasi", "ru": "Все"},
+    "allProducts": {"uz": "Barcha mahsulotlar", "ru": "Все товары"},
+    "perk1": {"uz": "Original va kafolat", "ru": "Оригинал и гарантия"},
+    "perk2": {"uz": "O'zbekiston bo'ylab yetkazish", "ru": "Доставка по Узбекистану"},
+    "perk3": {"uz": "Har buyurtmada jonli chat", "ru": "Живой чат по заказу"},
+    "filters": {"uz": "Filtr", "ru": "Фильтры"},
+    "sort": {"uz": "Saralash", "ru": "Сортировка"},
+    "sortPopular": {"uz": "Mashhur", "ru": "Популярные"},
+    "sortNew": {"uz": "Yangi", "ru": "Новые"},
+    "sortCheap": {"uz": "Arzonroq", "ru": "Дешевле"},
+    "sortExpensive": {"uz": "Qimmatroq", "ru": "Дороже"},
+    "price": {"uz": "Narx", "ru": "Цена"},
+    "priceFrom": {"uz": "dan", "ru": "от"},
+    "priceTo": {"uz": "gacha", "ru": "до"},
+    "inStockOnly": {"uz": "Faqat sotuvdagilar", "ru": "Только в наличии"},
+    "withDiscount": {"uz": "Chegirmadagilar", "ru": "Со скидкой"},
+    "reset": {"uz": "Tozalash", "ru": "Сбросить"},
+    "show": {"uz": "Ko'rsatish", "ru": "Показать"},
+    "found": {"uz": "{n} ta mahsulot", "ru": "{n} товаров"},
+    "from": {"uz": "dan", "ru": "от"},
+    "inStock": {"uz": "Sotuvda bor", "ru": "В наличии"},
+    "lowStock": {"uz": "Oz qoldi: {n} ta", "ru": "Осталось: {n} шт"},
+    "lowStockShort": {"uz": "Oz qoldi", "ru": "Мало"},
+    "outOfStock": {"uz": "Sotuvda yo'q", "ru": "Нет в наличии"},
+    "notify": {"uz": "Kelganda xabar berish", "ru": "Сообщить о поступлении"},
+    "notifyOn": {"uz": "Sotuvga chiqqanda botda xabar beramiz", "ru": "Сообщим в боте, когда появится"},
+    "warranty": {"uz": "Kafolat", "ru": "Гарантия"},
+    "specs": {"uz": "Xarakteristikalar", "ru": "Характеристики"},
+    "description": {"uz": "Tavsif", "ru": "Описание"},
+    "showAll": {"uz": "Hammasini ko'rsatish", "ru": "Показать все"},
+    "addToCart": {"uz": "Savatga", "ru": "В корзину"},
+    "inCart": {"uz": "Savatda", "ru": "В корзине"},
+    "added": {"uz": "Savatga qo'shildi", "ru": "Добавлено в корзину"},
+    "favAdded": {"uz": "Sevimlilarga qo'shildi", "ru": "Добавлено в избранное"},
+    "favEmpty": {"uz": "Yoqqan mahsulotlarni ❤️ bilan saqlang", "ru": "Сохраняйте понравившиеся товары ❤️"},
+    "compare": {"uz": "Solishtirish", "ru": "Сравнение"},
+    "compareAdd": {"uz": "Solishtirishga", "ru": "К сравнению"},
+    "compareAdded": {"uz": "Solishtirishga qo'shildi", "ru": "Добавлено к сравнению"},
+    "compareLimit": {"uz": "4 tagacha mahsulotni solishtirish mumkin", "ru": "Можно сравнить до 4 товаров"},
+    "compareEmpty": {"uz": "Solishtirish uchun mahsulot kartasida ⇄ ni bosing",
+                     "ru": "Нажмите ⇄ в карточке товара, чтобы сравнить"},
+    "compareClear": {"uz": "Tozalash", "ru": "Очистить"},
+    "onlyDiff": {"uz": "Faqat farqlar", "ru": "Только различия"},
     "cart": {"uz": "Savat", "ru": "Корзина"},
     "clear": {"uz": "Tozalash", "ru": "Очистить"},
     "clearConfirm": {"uz": "Savatni tozalaysizmi?", "ru": "Очистить корзину?"},
     "checkout": {"uz": "Rasmiylashtirish", "ru": "Оформить заказ"},
     "checkoutTitle": {"uz": "Buyurtma berish", "ru": "Оформление"},
-    "closed": {"uz": "⏸ Hozir yopiqmiz.", "ru": "⏸ Сейчас мы закрыты."},
-    "opensAt": {"uz": "Ochilamiz: {time}.", "ru": "Откроемся: {time}."},
-    "laterOnly": {"uz": "Vaqtga buyurtma berishingiz mumkin ⏰", "ru": "Можно заказать ко времени ⏰"},
-    "notAccepting": {"uz": "⏸ Hozir buyurtma qabul qilinmayapti", "ru": "⏸ Сейчас заказы не принимаются"},
-    "from": {"uz": "dan", "ru": "от"},
-    "add": {"uz": "Qo'shish", "ru": "Добавить"},
-    "added": {"uz": "✓ Savatga qo'shildi", "ru": "✓ Добавлено в корзину"},
-    "emptyMenu": {"uz": "Menyu hozircha bo'sh", "ru": "Меню пока пусто"},
+    "notAccepting": {"uz": "Hozir buyurtma qabul qilinmayapti", "ru": "Сейчас заказы не принимаются"},
+    "afterHours": {"uz": "Ish vaqtidan tashqari — operator {time} bog'lanadi", "ru": "Нерабочее время — оператор свяжется {time}"},
     "emptyCart": {"uz": "Savatingiz bo'sh", "ru": "Корзина пуста"},
-    "toMenu": {"uz": "Menyuga o'tish", "ru": "Перейти в меню"},
+    "emptyCartSub": {"uz": "Katalogdan o'zingizga yoqqan texnikani tanlang", "ru": "Выберите технику в каталоге"},
+    "toCatalog": {"uz": "Katalogga o'tish", "ru": "Перейти в каталог"},
     "items": {"uz": "Mahsulotlar", "ru": "Товары"},
     "deliveryFee": {"uz": "Yetkazib berish", "ru": "Доставка"},
     "free": {"uz": "bepul", "ru": "бесплатно"},
     "discount": {"uz": "Chegirma", "ru": "Скидка"},
     "total": {"uz": "Jami", "ru": "Итого"},
-    "minOrder": {"uz": "Yetkazib berish uchun minimal buyurtma: {sum}. Yana {left} qo'shing.",
-                 "ru": "Минимальный заказ на доставку: {sum}. Добавьте ещё {left}."},
-    "delivery": {"uz": "🛵 Yetkazib berish", "ru": "🛵 Доставка"},
-    "pickup": {"uz": "🏃 Olib ketish", "ru": "🏃 Самовывоз"},
-    "pickupFrom": {"uz": "🏃 Buyurtmani kafedan olib ketasiz", "ru": "🏃 Заберёте заказ в кафе"},
+    "minOrder": {"uz": "Minimal buyurtma: {sum}. Yana {left} qo'shing.",
+                 "ru": "Минимальный заказ: {sum}. Добавьте ещё {left}."},
+    "freeFrom": {"uz": "{sum} dan bepul yetkazamiz", "ru": "Бесплатная доставка от {sum}"},
+    "delivery": {"uz": "Yetkazib berish", "ru": "Доставка"},
+    "pickup": {"uz": "Olib ketish", "ru": "Самовывоз"},
+    "pickupFrom": {"uz": "Buyurtmani do'kondan olib ketasiz", "ru": "Заберёте заказ в магазине"},
     "openMap": {"uz": "Xaritada ochish", "ru": "Открыть на карте"},
+    "region": {"uz": "Viloyat", "ru": "Регион"},
+    "regionPh": {"uz": "Viloyatni tanlang", "ru": "Выберите регион"},
+    "eta": {"uz": "Muddat", "ru": "Срок"},
     "name": {"uz": "Qabul qiluvchi ismi", "ru": "Имя получателя"},
     "namePh": {"uz": "Ismingiz", "ru": "Ваше имя"},
     "phone": {"uz": "Telefon raqam", "ru": "Телефон"},
-    "address": {"uz": "Yetkazish manzili", "ru": "Адрес доставки"},
-    "addressPh": {"uz": "Shahar, ko'cha, uy, xonadon, mo'ljal", "ru": "Город, улица, дом, квартира, ориентир"},
-    "geo": {"uz": "📍 Joriy joylashuvimni qo'shish", "ru": "📍 Добавить мою геолокацию"},
-    "geoLoading": {"uz": "⏳ Aniqlanmoqda...", "ru": "⏳ Определяем..."},
-    "geoAdded": {"uz": "✓ Joylashuv qo'shildi", "ru": "✓ Геолокация добавлена"},
+    "address": {"uz": "Manzil", "ru": "Адрес"},
+    "addressPh": {"uz": "Shahar/tuman, ko'cha, uy, mo'ljal", "ru": "Город/район, улица, дом, ориентир"},
+    "geo": {"uz": "Joriy joylashuvimni qo'shish", "ru": "Добавить мою геолокацию"},
+    "geoLoading": {"uz": "Aniqlanmoqda...", "ru": "Определяем..."},
+    "geoAdded": {"uz": "Joylashuv qo'shildi", "ru": "Геолокация добавлена"},
     "geoFail": {"uz": "Joylashuvni aniqlab bo'lmadi", "ru": "Не удалось определить геолокацию"},
-    "when": {"uz": "Qachonga?", "ru": "Когда?"},
-    "asap": {"uz": "⚡ Imkon qadar tez", "ru": "⚡ Как можно скорее"},
-    "later": {"uz": "⏰ Vaqtni tanlash", "ru": "⏰ Ко времени"},
-    "today": {"uz": "Bugun", "ru": "Сегодня"},
-    "tomorrow": {"uz": "Ertaga", "ru": "Завтра"},
-    "noSlots": {"uz": "Bugun bo'sh vaqt qolmadi", "ru": "На сегодня свободного времени нет"},
     "comment": {"uz": "Izoh (ixtiyoriy)", "ru": "Комментарий (необязательно)"},
-    "commentPh": {"uz": "Manzil bo'yicha (podyezd, qavat, domofon) yoki ovqat bo'yicha (piyozsiz, achchiqroq...)",
-                  "ru": "По адресу (подъезд, этаж, домофон) или по блюдам (без лука, поострее...)"},
+    "commentPh": {"uz": "Qo'ng'iroqdan oldin yozing, qavat, qulay vaqt...", "ru": "Напишите перед звонком, этаж, удобное время..."},
     "promo": {"uz": "Promo-kod", "ru": "Промокод"},
     "promoPh": {"uz": "Kodni kiriting", "ru": "Введите код"},
     "apply": {"uz": "Qo'llash", "ru": "Применить"},
     "remove": {"uz": "Olib tashlash", "ru": "Убрать"},
     "payment": {"uz": "To'lov usuli", "ru": "Способ оплаты"},
-    "cash": {"uz": "💵 Naqd", "ru": "💵 Наличные"},
-    "cashSub": {"uz": "Qabul qilganda to'lash", "ru": "Оплата при получении"},
-    "card": {"uz": "💳 Karta", "ru": "💳 Карта"},
+    "cash": {"uz": "Naqd", "ru": "Наличные"},
+    "cashSub": {"uz": "Qabul qilganda", "ru": "При получении"},
+    "card": {"uz": "Click / Payme", "ru": "Click / Payme"},
     "soon": {"uz": "Tez kunda", "ru": "Скоро"},
-    "cardSoon": {"uz": "💳 Karta orqali to'lov tez kunda!", "ru": "💳 Оплата картой скоро!"},
+    "cardSoon": {"uz": "Click/Payme orqali to'lov tez kunda!", "ru": "Оплата Click/Payme скоро!"},
     "confirm": {"uz": "Buyurtmani tasdiqlash", "ru": "Подтвердить заказ"},
     "sending": {"uz": "Yuborilmoqda...", "ru": "Отправляем..."},
     "errName": {"uz": "Qabul qiluvchi ismini kiriting", "ru": "Укажите имя получателя"},
     "errPhone": {"uz": "Telefon raqamni to'liq kiriting: +998 90 123 45 67", "ru": "Введите номер полностью: +998 90 123 45 67"},
-    "errAddress": {"uz": "Yetkazish manzilini to'liqroq kiriting", "ru": "Укажите адрес подробнее"},
-    "errTime": {"uz": "Vaqtni tanlang", "ru": "Выберите время"},
+    "errRegion": {"uz": "Viloyatni tanlang", "ru": "Выберите регион"},
+    "errAddress": {"uz": "Manzilni to'liqroq kiriting", "ru": "Укажите адрес подробнее"},
     "placed": {"uz": "Buyurtma qabul qilindi!", "ru": "Заказ принят!"},
-    "orderId": {"uz": "Buyurtma ID:", "ru": "Номер заказа:"},
-    "placedSub": {"uz": "Holat o'zgarishi haqida botda xabar beramiz.", "ru": "Сообщим в боте, когда статус изменится."},
+    "orderId": {"uz": "Buyurtma ID", "ru": "Номер заказа"},
+    "placedSub": {"uz": "Operator tez orada bog'lanadi. Holatni shu yerda va botda kuzating.",
+                  "ru": "Оператор скоро свяжется. Следите за статусом здесь и в боте."},
     "track": {"uz": "Buyurtmani kuzatish", "ru": "Отследить заказ"},
-    "backToMenu": {"uz": "Menyuga qaytish", "ru": "Вернуться в меню"},
+    "continueShopping": {"uz": "Xaridni davom ettirish", "ru": "Продолжить покупки"},
     "myOrders": {"uz": "Buyurtmalarim", "ru": "Мои заказы"},
     "noOrders": {"uz": "Hali buyurtmalar yo'q", "ru": "Заказов пока нет"},
-    "orderNow": {"uz": "Buyurtma berish", "ru": "Сделать заказ"},
-    "ordersBack": {"uz": "← Buyurtmalar", "ru": "← Заказы"},
+    "ordersBack": {"uz": "Buyurtmalar", "ru": "Заказы"},
     "pcs": {"uz": "ta", "ru": "шт"},
     "stepNew": {"uz": "Buyurtma berildi", "ru": "Заказ оформлен"},
     "cancelOrder": {"uz": "Buyurtmani bekor qilish", "ru": "Отменить заказ"},
     "cancelConfirm": {"uz": "Buyurtmani bekor qilasizmi?", "ru": "Отменить заказ?"},
     "cancelledToast": {"uz": "Buyurtma bekor qilindi", "ru": "Заказ отменён"},
-    "cancelledTitle": {"uz": "❌ Buyurtma bekor qilindi", "ru": "❌ Заказ отменён"},
+    "cancelledTitle": {"uz": "Buyurtma bekor qilindi", "ru": "Заказ отменён"},
     "reason": {"uz": "Sabab", "ru": "Причина"},
-    "rateTitle": {"uz": "Buyurtmani baholang", "ru": "Оцените заказ"},
+    "statusPhotos": {"uz": "Holat rasmlari", "ru": "Фото статуса"},
+    "warrantyCard": {"uz": "Kafolat kartasi", "ru": "Гарантийный талон"},
+    "warrantyUntil": {"uz": "{date} gacha", "ru": "до {date}"},
+    "serial": {"uz": "IMEI / SN", "ru": "IMEI / SN"},
+    "chat": {"uz": "Chat", "ru": "Чат"},
+    "chatTitle": {"uz": "Do'kon bilan chat", "ru": "Чат с магазином"},
+    "chatPh": {"uz": "Xabar yozing...", "ru": "Напишите сообщение..."},
+    "chatEmpty": {"uz": "Buyurtma bo'yicha savolingizni yozing — xodim shu yerda javob beradi.",
+                  "ru": "Задайте вопрос по заказу — сотрудник ответит здесь."},
+    "you": {"uz": "Siz", "ru": "Вы"},
+    "rateTitle": {"uz": "Xaridni baholang", "ru": "Оцените покупку"},
     "ratePh": {"uz": "Izoh (ixtiyoriy)", "ru": "Комментарий (необязательно)"},
     "rateSend": {"uz": "Yuborish", "ru": "Отправить"},
-    "rateThanks": {"uz": "Rahmat! Fikringiz biz uchun muhim 🙏", "ru": "Спасибо за отзыв! 🙏"},
+    "rateThanks": {"uz": "Rahmat! Fikringiz biz uchun muhim", "ru": "Спасибо за отзыв!"},
     "yourRating": {"uz": "Sizning bahoingiz", "ru": "Ваша оценка"},
     "questions": {"uz": "Savollar uchun", "ru": "По вопросам"},
     "retry": {"uz": "Qayta urinish", "ru": "Повторить"},
-    "openInTg": {"uz": "Iltimos, ushbu ilovani Telegram bot orqali oching.", "ru": "Пожалуйста, откройте приложение через Telegram-бота."},
+    "openInTg": {"uz": "Iltimos, ilovani Telegram bot orqali oching.", "ru": "Пожалуйста, откройте приложение через Telegram-бота."},
     "network": {"uz": "Internet aloqasini tekshiring", "ru": "Проверьте интернет-соединение"},
+    "back": {"uz": "Ortga", "ru": "Назад"},
+    "chooseOption": {"uz": "Variantni tanlang", "ru": "Выберите вариант"},
+    "unavailableCombo": {"uz": "Bu kombinatsiya mavjud emas", "ru": "Такой комбинации нет"},
+    "maxQty": {"uz": "Omborda shuncha qolgan", "ru": "Больше нет на складе"},
 }
 T.update({f"w_{k}": v for k, v in W.items()})
 
@@ -385,18 +486,23 @@ def default_text(key: str, lang: str) -> str:
     return entry.get(lang) or entry.get("uz") or key
 
 
+def _fill(text: str, kw: dict) -> str:
+    if "{" not in text:
+        return text
+    return text.format(**kw)
+
+
 def t(key: str, lang: str = "uz", **kw) -> str:
     if key not in T:
         return key
     lang = norm_lang(lang)
+    kw.setdefault("shop", SHOP["name"])
     text = OVERRIDES.get((key, lang)) or default_text(key, lang)
-    if not kw:
-        return text
     try:
-        return text.format(**kw)
+        return _fill(text, kw)
     except (KeyError, IndexError, ValueError):
         # tahrirlangan matnda xato bo'lsa — asl matn (bot to'xtab qolmasin)
-        return default_text(key, lang).format(**kw)
+        return _fill(default_text(key, lang), kw)
 
 
 def placeholders(text: str) -> set[str]:
@@ -409,8 +515,13 @@ def placeholders(text: str) -> set[str]:
 
 
 def web_texts(lang: str) -> dict[str, str]:
-    """Mini App uchun barcha matnlar (tahrirlanganlari bilan)."""
-    return {k[2:]: t(k, lang) for k in T if k.startswith("w_")}
+    """Mini App uchun barcha matnlar (tahrirlanganlari bilan). {n}, {sum} kabi o'zgaruvchilar JS da qo'yiladi."""
+    out = {}
+    for k in T:
+        if k.startswith("w_"):
+            text = OVERRIDES.get((k, norm_lang(lang))) or default_text(k, norm_lang(lang))
+            out[k[2:]] = text.replace("{shop}", SHOP["name"])
+    return out
 
 
 def both(key: str) -> set[str]:
@@ -424,7 +535,7 @@ def money_l(amount: int | float, lang: str = "uz") -> str:
 
 
 def status_text(status: str, order_type: str, lang: str) -> str:
-    if order_type == "pickup" and status in ("delivering", "delivered"):
+    if order_type == "pickup" and status in ("shipping", "delivered"):
         return t(f"s_{status}_pickup", lang)
     return t(f"s_{status}", lang)
 

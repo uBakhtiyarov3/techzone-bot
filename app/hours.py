@@ -1,4 +1,4 @@
-"""Ish jadvali: avtomatik ochilish/yopilish va vaqtga buyurtma uchun slotlar."""
+"""Ish jadvali: operatorlar ishlaydigan vaqt. Buyurtma 24/7 qabul qilinadi, faqat "closed" rejimi to'xtatadi."""
 import json
 from datetime import date, datetime, timedelta
 
@@ -9,7 +9,7 @@ DAY_NAMES = {
     "uz": ["Dushanba", "Seshanba", "Chorshanba", "Payshanba", "Juma", "Shanba", "Yakshanba"],
     "ru": ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"],
 }
-DEFAULT_SCHEDULE = {d: ["10:00", "23:00"] for d in DAYS}
+DEFAULT_SCHEDULE = {d: ["09:00", "21:00"] for d in DAYS}
 
 
 def load_schedule(settings: dict) -> dict:
@@ -71,41 +71,6 @@ def next_opening(settings: dict, dt: datetime | None = None) -> datetime | None:
         if w and w[0] > dt:
             return w[0]
     return None
-
-
-def slots(settings: dict, dt: datetime | None = None) -> list[dict]:
-    """Faqat bugun uchun tanlanadigan vaqtlar (ertangi kunga buyurtma olinmaydi): [{"day": "today", "date": ..., "times": [{"value", "label"}]}]."""
-    if (settings.get("mode") or "auto") == "closed":
-        return []
-    dt = dt or now()
-    schedule = load_schedule(settings)
-    prep = max(10, int(settings.get("prep_time") or 40))
-    step = max(10, int(settings.get("slot_step") or 30))
-    earliest = dt + timedelta(minutes=prep)
-    result = []
-    for offset, key in ((0, "today"),):
-        day = dt.date() + timedelta(days=offset)
-        w = day_window(schedule, day)
-        if not w:
-            continue
-        start, end = w
-        t = max(start, earliest)
-        # qadamga yaxlitlash (masalan 30 daqiqa)
-        base = datetime(t.year, t.month, t.day, tzinfo=TZ)
-        minutes = (t - base).seconds // 60 + (1 if (t - base).seconds % 60 else 0)
-        minutes = -(-minutes // step) * step
-        t = base + timedelta(minutes=minutes)
-        times = []
-        while t <= end - timedelta(minutes=step // 2) and len(times) < 60:
-            times.append({"value": t.strftime("%Y-%m-%d %H:%M"), "label": t.strftime("%H:%M")})
-            t += timedelta(minutes=step)
-        if times:
-            result.append({"day": key, "date": day.isoformat(), "times": times})
-    return result
-
-
-def valid_slot(settings: dict, value: str, dt: datetime | None = None) -> bool:
-    return any(value == t["value"] for d in slots(settings, dt) for t in d["times"])
 
 
 def today_hours(settings: dict) -> str | None:

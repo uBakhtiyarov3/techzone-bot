@@ -29,6 +29,8 @@ class Config:
     port: int = int(os.getenv("PORT", "8080"))
     db_path: str = os.getenv("DB_PATH", str(BASE_DIR / "data" / "bot.db"))
     debug: bool = os.getenv("DEBUG", "0") == "1"
+    # birinchi ishga tushishda (baza bo'sh bo'lsa) demo katalog qo'shilsinmi
+    demo_data: bool = os.getenv("DEMO_DATA", "1") == "1"
     webapp_dir: Path = BASE_DIR / "webapp"
     uploads_dir: Path = BASE_DIR / "data" / "uploads"
 

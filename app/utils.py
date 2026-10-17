@@ -4,30 +4,31 @@ from html import escape
 # O'zbekiston vaqti (UTC+5, yozgi vaqt yo'q)
 TZ = timezone(timedelta(hours=5))
 
-STATUSES = ["new", "accepted", "cooking", "delivering", "delivered"]
+STATUSES = ["new", "accepted", "packing", "shipping", "delivered"]
 STATUS_LABELS = {
     "new": "🕐 Yangi (tasdiqlanmagan)",
     "accepted": "✅ Qabul qilindi",
-    "cooking": "👨‍🍳 Tayyorlanmoqda",
-    "delivering": "🛵 Yetkazilmoqda",
+    "packing": "📦 Yig'ilmoqda",
+    "shipping": "🚚 Yo'lda",
     "delivered": "🎉 Yetkazildi",
     "cancelled": "❌ Bekor qilindi",
 }
 # Xodim bosadigan "keyingi qadam" tugmalari
 NEXT_STATUS = {
     "new": ("accepted", "✅ Qabul qilish"),
-    "accepted": ("cooking", "👨‍🍳 Tayyorlashni boshlash"),
-    "cooking": ("delivering", "🛵 Yetkazishga berish"),
-    "delivering": ("delivered", "🎉 Yetkazildi"),
+    "accepted": ("packing", "📦 Yig'ishni boshlash"),
+    "packing": ("shipping", "🚚 Yo'lga chiqarish"),
+    "shipping": ("delivered", "🎉 Yetkazildi"),
 }
 # Olib ketish (pickup) uchun boshqacha nomlar
-PICKUP_LABELS = {"delivering": "🛍 Tayyor — olib ketishni kutmoqda", "delivered": "🎉 Mijozga berildi"}
+PICKUP_LABELS = {"shipping": "🛍 Tayyor — olib ketishni kutmoqda", "delivered": "🎉 Mijozga topshirildi"}
 PICKUP_NEXT = {
-    "cooking": ("delivering", "🛍 Tayyor (olib ketishga)"),
-    "delivering": ("delivered", "🎉 Mijozga berildi"),
+    "packing": ("shipping", "🛍 Tayyor (olib ketishga)"),
+    "shipping": ("delivered", "🎉 Topshirildi"),
 }
-ACTIVE_STATUSES = ("new", "accepted", "cooking", "delivering")
-TYPE_LABELS = {"delivery": "🛵 Yetkazib berish", "pickup": "🏃 Olib ketish"}
+ACTIVE_STATUSES = ("new", "accepted", "packing", "shipping")
+TYPE_LABELS = {"delivery": "🚚 Yetkazib berish", "pickup": "🏬 Olib ketish"}
+PAYMENT_LABELS = {"cash": "💵 Naqd", "card": "💳 Karta"}
 
 
 def status_label(status: str, order_type: str = "delivery") -> str:
@@ -40,21 +41,6 @@ def next_status(status: str, order_type: str = "delivery") -> tuple[str, str] | 
     if order_type == "pickup" and status in PICKUP_NEXT:
         return PICKUP_NEXT[status]
     return NEXT_STATUS.get(status)
-
-
-def fmt_dt(value: str) -> str:
-    """'2026-10-02 19:00' -> '02.10 19:00' (bugun bo'lsa faqat vaqt bilan 'bugun')."""
-    try:
-        dt = datetime.strptime(value[:16], "%Y-%m-%d %H:%M")
-    except ValueError:
-        return value
-    if dt.date() == now().date():
-        return "bugun " + dt.strftime("%H:%M")
-    if (dt.date() - now().date()).days == 1:
-        return "ertaga " + dt.strftime("%H:%M")
-    return dt.strftime("%d.%m %H:%M")
-
-PAYMENT_LABELS = {"cash": "💵 Naqd", "card": "💳 Karta"}
 
 
 def now() -> datetime:
@@ -81,22 +67,21 @@ def h(text) -> str:
     return escape(str(text or ""), quote=False)
 
 
+def item_title(it: dict) -> str:
+    """Buyurtma pozitsiyasi: «iPhone 15 (Qora, 256 GB)»."""
+    return it["name"] + (f" ({it['variant']})" if it.get("variant") else "")
+
+
 def format_order(order: dict, items: list[dict], for_staff: bool = True) -> str:
     otype = order.get("order_type") or "delivery"
     lines = [
         f"<b>🧾 Buyurtma</b> <code>{order['code']}</code> · {TYPE_LABELS[otype]}",
         f"Holati: <b>{status_label(order['status'], otype)}</b>",
+        "",
     ]
-    if order.get("scheduled_at"):
-        lines.append(f"⏰ <b>VAQTGA: {fmt_dt(order['scheduled_at'])}</b>")
-    else:
-        lines.append("⚡ Imkon qadar tez")
-    lines.append("")
     for it in items:
-        variant = f" ({h(it['variant'])})" if it["variant"] else ""
-        lines.append(
-            f"• {h(it['name'])}{variant} × {it['qty']} = {money(it['price'] * it['qty'])}"
-        )
+        serial = f" · IMEI/SN: <code>{h(it['serial'])}</code>" if it.get("serial") else ""
+        lines.append(f"• {h(item_title(it))} × {it['qty']} = {money(it['price'] * it['qty'])}{serial}")
     lines.append("")
     lines.append(f"Mahsulotlar: {money(order['subtotal'])}")
     if order.get("discount"):
@@ -104,14 +89,15 @@ def format_order(order: dict, items: list[dict], for_staff: bool = True) -> str:
     elif order.get("promo_code"):
         lines.append(f"🎁 Promo-kod {h(order['promo_code'])}: bepul yetkazish")
     if otype == "delivery":
-        lines.append(f"Yetkazish: {money(order['delivery_fee']) if order['delivery_fee'] else 'bepul'}")
+        lines.append(f"Yetkazish ({h(order.get('region_name') or '')}): "
+                     f"{money(order['delivery_fee']) if order['delivery_fee'] else 'bepul'}")
     lines.append(f"<b>Jami: {money(order['total'])}</b>")
     lines.append(f"To'lov: {PAYMENT_LABELS.get(order['payment_method'], order['payment_method'])}")
     lines.append("")
     lines.append(f"👤 {h(order['customer_name'])}" + (" 🇷🇺" if order.get("lang") == "ru" else ""))
     lines.append(f"📞 {h(phone_fmt(order['phone']))}")
     if otype == "delivery":
-        lines.append(f"📍 {h(order['address'])}")
+        lines.append(f"📍 {h(order.get('region_name') or '')}, {h(order['address'])}")
     if order.get("comment"):
         lines.append(f"💬 <b>Izoh:</b> {h(order['comment'])}")
     if order.get("cancel_reason"):

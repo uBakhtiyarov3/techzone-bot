@@ -1,6 +1,7 @@
 """Baza va yuklangan rasmlarning zaxira nusxasi (zip) — menejerga Telegram orqali yuboriladi."""
 import asyncio
 import io
+import re
 import logging
 import tempfile
 import zipfile
@@ -11,6 +12,7 @@ from aiogram import Bot
 from aiogram.types import BufferedInputFile
 
 from . import db
+from .brand import shop_name
 from .config import config
 from .utils import now
 
@@ -30,7 +32,8 @@ async def make_backup() -> tuple[bytes, str]:
                 for f in config.uploads_dir.iterdir():
                     if f.is_file():
                         zf.write(f, f"data/uploads/{f.name}")
-    name = f"yaproq_backup_{now().strftime('%Y%m%d_%H%M')}.zip"
+    prefix = re.sub(r"[^a-z0-9]+", "", shop_name().lower()) or "shop"
+    name = f"{prefix}_backup_{now().strftime('%Y%m%d_%H%M')}.zip"
     return buf.getvalue(), name
 
 

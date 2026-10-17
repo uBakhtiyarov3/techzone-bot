@@ -3,13 +3,15 @@ from aiogram.filters import Command, CommandStart, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 
-from .. import db, hours
+from .. import db, hours, rich
+from ..brand import social_url
 from ..catalog import norm_lang
 from ..config import config
 from ..filters import Btn
 from ..i18n import t
 from ..keyboards import lang_kb, main_kb, start_inline_kb, webapp_ready
 from ..orders import public_settings
+from ..rich import Rich
 from ..roles import get_role, lang_of
 from ..utils import h
 
@@ -28,13 +30,11 @@ async def send_welcome(message: Message, user_id: int, first_name: str, is_new: 
     if is_new:
         greeting += t("account_created", lang) + "\n\n"
     settings = public_settings(await db.get_settings())
-    if not settings["is_open"]:
-        greeting += t("closed_now", lang)
-        if settings["next_open"]:
-            greeting += " " + t("opens_at", lang, when=settings["next_open"])
-        greeting += "\n\n"
+    if not settings["accepting"]:
+        greeting += t("closed_now", lang) + "\n\n"
     greeting += t("how_order", lang)
-    await message.answer(greeting, reply_markup=main_kb(role, lang))
+    logo = await db.get_setting("shop_logo")
+    await rich.answer(message, Rich().img(logo).p(greeting), main_kb(role, lang))
 
     ways = t("ways_bot", lang)
     if webapp_ready():
@@ -93,7 +93,7 @@ async def cmd_help(message: Message) -> None:
     if role in ("staff", "manager"):
         text += "\n<b>Xodim:</b>\n/staff — xodim kabineti\n/order &lt;ID&gt; — buyurtmani ID bo'yicha topish\n"
     if role == "manager":
-        text += "\n<b>Menejer:</b>\n/admin — menejer paneli\n"
+        text += "\n<b>Menejer:</b>\n/admin — menejer paneli\n/panel — do'kon paneli (web)\n"
     await message.answer(text)
 
 
@@ -101,18 +101,28 @@ async def cmd_help(message: Message) -> None:
 async def contact(message: Message) -> None:
     lang = await lang_of(message.from_user.id)
     s = await db.get_settings()
-    address = s.get("cafe_address") or ""
+    address = s.get("shop_address") or ""
+    links = []
+    for kind, key, label in (("instagram", "instagram", "Instagram"), ("telegram", "telegram_channel", "Telegram"),
+                             ("website", "website", "Web")):
+        url = social_url(kind, s.get(key) or "")
+        if url:
+            links.append(f'<a href="{h(url)}">{label}</a>')
     await message.answer(t(
         "contact", lang,
         phone=h(s.get("phone") or t("phone_soon", lang)),
         hours=h(hours.schedule_summary(s, lang)),
         address=t("address_line", lang, address=h(address)) if address else "",
-    ))
+        links=("🔗 " + " · ".join(links) + "\n") if links else "",
+    ), disable_web_page_preview=True)
 
 
 @router.message(StateFilter(None), Btn("b_about"))
 async def about(message: Message) -> None:
-    await message.answer(t("about", await lang_of(message.from_user.id)))
+    lang = await lang_of(message.from_user.id)
+    s = await db.get_settings()
+    await message.answer(t("about", lang, tagline=h(s.get("shop_tagline") or ""),
+                           about=h(s.get(f"about_{lang}") or s.get("about_uz") or "")))
 
 
 @router.message(Btn("b_back"))

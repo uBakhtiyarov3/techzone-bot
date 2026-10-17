@@ -3,17 +3,21 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
-from aiogram.types import InlineKeyboardMarkup
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
-from . import db
+from . import chat, db, inventory, products, rich
+from .brand import shop_name
+from .catalog import variant_label
 from .config import config
-from .i18n import t
-from .keyboards import order_staff_kb, order_track_kb, rating_kb
-from .roles import lang_of
+from .i18n import status_text, t
+from .keyboards import order_staff_kb, order_track_kb, rating_kb, webapp_ready, webapp_url
 from .order_card import edit_order_card, send_order_card
-from .utils import h
+from .rich import Rich
+from .roles import lang_of
+from .utils import h, money, now, status_label
 
 log = logging.getLogger(__name__)
+SAFE = (TelegramForbiddenError, TelegramBadRequest)
 
 
 async def manager_ids() -> set[int]:
@@ -21,7 +25,7 @@ async def manager_ids() -> set[int]:
 
 
 async def staff_recipients() -> list[int]:
-    """Buyurtma xabarlari (tasdiqlash, yetkazish tugmalari) faqat xodimlarga boradi.
+    """Buyurtma kartalari (holat tugmalari bilan) faqat xodimlarga boradi.
     Menejerlarga bormaydi — ular faqat bajarilgan buyurtma haqida hisobot oladi.
     Bitta ham xodim bo'lmasa, buyurtma yo'qolmasligi uchun menejerlarga yuboriladi."""
     managers = await manager_ids()
@@ -29,29 +33,47 @@ async def staff_recipients() -> list[int]:
     return sorted(ids or managers)
 
 
-async def notify_managers_done(bot: Bot, order: dict) -> None:
-    """Buyurtma bajarilganda menejerlarga qisqa hisobot: summa va bugungi tushum."""
-    from .utils import money, now, status_label
+async def _send_many(bot: Bot, chat_ids, text: str, **kw) -> None:
+    for chat_id in chat_ids:
+        try:
+            await bot.send_message(chat_id, text, **kw)
+        except SAFE:
+            pass
 
+
+async def notify_managers_done(bot: Bot, order: dict) -> None:
+    """Buyurtma bajarilganda menejerlarga qisqa hisobot: summa, foyda va bugungi tushum."""
     since = now().strftime("%Y-%m-%d 00:00:00")
     row = await db.fetchone(
         "SELECT COUNT(*) c, COALESCE(SUM(total), 0) s FROM orders WHERE status = 'delivered' AND created_at >= ?",
         since,
     )
+    cost = await db.scalar("SELECT COALESCE(SUM(qty * cost), 0) FROM order_items WHERE order_id = ?", order["id"])
+    profit = order["subtotal"] - order["discount"] - cost
     otype = order.get("order_type") or "delivery"
     text = (
         f"✅ <b>Buyurtma bajarildi</b> — <code>{order['code']}</code>\n"
         f"{status_label('delivered', otype)}\n\n"
         f"💰 Tushum: <b>{money(order['total'])}</b>"
         + (f" (chegirma {money(order['discount'])})" if order.get("discount") else "")
+        + (f"\n📈 Yalpi foyda: <b>{money(profit)}</b>" if cost else "")
         + (f"\n👷 Xodim: {h(order['staff_name'])}" if order.get("staff_name") else "")
         + f"\n\n📊 Bugun: <b>{row['c']}</b> ta buyurtma, jami <b>{money(row['s'])}</b>"
     )
-    for chat_id in await manager_ids():
-        try:
-            await bot.send_message(chat_id, text)
-        except (TelegramForbiddenError, TelegramBadRequest):
-            pass
+    await _send_many(bot, await manager_ids(), text)
+
+
+async def notify_low_stock(bot: Bot, items: list[dict]) -> None:
+    low = int(await db.get_setting("low_stock") or 3)
+    lines = []
+    for it in items:
+        v = await products.get_variant(it["variant_id"])
+        if v and v["stock"] <= low:
+            name = it["name"] + (f" ({it['variant']})" if it.get("variant") else "")
+            lines.append(f"• {h(name)} — <b>{v['stock']}</b> ta" + (" ⛔️" if v["stock"] <= 0 else ""))
+    if lines:
+        await _send_many(bot, await manager_ids(), "⚠️ <b>Omborda kam qoldi</b>\n\n" + "\n".join(lines)
+                         + "\n\nKirim qilish: Web panel → Ombor → Kirim")
 
 
 async def notify_new_order(bot: Bot, order_id: int, notify_customer: bool = True) -> None:
@@ -62,25 +84,22 @@ async def notify_new_order(bot: Bot, order_id: int, notify_customer: bool = True
         try:
             msg = await send_order_card(bot, chat_id, order, items, "🔔 YANGI BUYURTMA", kb)
             await db.save_order_message(order_id, chat_id, msg.message_id)
-        except (TelegramForbiddenError, TelegramBadRequest) as e:
+        except SAFE as e:
             log.warning("Xodimga yuborib bo'lmadi %s: %s", chat_id, e)
+    await notify_low_stock(bot, items)
 
     if not notify_customer:  # bot ichidagi savatdan berilganda mijozga tasdiq allaqachon ko'rsatilgan
         return
-    # Mijozga tasdiq
     lang = await lang_of(order["user_id"])
     try:
-        await bot.send_message(
-            order["user_id"],
-            t("sent_new", lang, code=order["code"]),
-            reply_markup=order_track_kb(order["code"], lang),
-        )
-    except (TelegramForbiddenError, TelegramBadRequest) as e:
+        await bot.send_message(order["user_id"], t("sent_new", lang, code=order["code"]),
+                               reply_markup=order_track_kb(order["code"], lang))
+    except SAFE as e:
         log.warning("Mijozga yuborib bo'lmadi %s: %s", order["user_id"], e)
 
 
 async def refresh_staff_messages(bot: Bot, order_id: int) -> None:
-    """Holat o'zgarganda barcha xodimlardagi xabarni yangilaydi."""
+    """Holat o'zgarganda barcha xodimlardagi kartani yangilaydi."""
     order = await db.get_order(order_id)
     items = await db.get_order_items(order_id)
     kb: InlineKeyboardMarkup | None = order_staff_kb(order)
@@ -95,7 +114,10 @@ async def refresh_staff_messages(bot: Bot, order_id: int) -> None:
 
 
 async def delete_order(bot: Bot | None, order: dict) -> None:
-    """Buyurtmani o'chiradi va xodimlardagi xabarlarni «o'chirildi» deb yangilaydi (tugmalarsiz)."""
+    """Buyurtmani o'chiradi (faol bo'lsa qoldiq qaytariladi) va xodimlardagi kartani «o'chirildi» qiladi."""
+    if order["status"] != "cancelled":
+        async with inventory.STOCK_LOCK:
+            await inventory.release(order["id"], order["code"], None)
     messages = await db.delete_order(order["id"])
     if not bot:
         return
@@ -116,18 +138,27 @@ async def delete_order(bot: Bot | None, order: dict) -> None:
                 break
 
 
-def customer_status_text(order: dict, lang: str, cafe_address: str = "") -> str | None:
+def customer_status_text(order: dict, lang: str, shop_address: str = "", eta: str = "") -> str | None:
     status, otype = order["status"], order.get("order_type") or "delivery"
-    if status not in ("accepted", "cooking", "delivering", "delivered", "cancelled"):
+    if status not in ("accepted", "packing", "shipping", "delivered", "cancelled"):
         return None
     key = f"st_{status}"
-    if otype == "pickup" and status in ("delivering", "delivered"):
+    if otype == "pickup" and status in ("shipping", "delivered"):
         key += "_pickup"
     reason = ""
     if status == "cancelled" and order.get("cancel_reason"):
         reason = "\n" + t("reason", lang, reason=h(order["cancel_reason"]))
-    address = f"\n📍 {h(cafe_address)}" if cafe_address else ""
-    return t(key, lang, code=order["code"], reason=reason, address=address)
+    address = f"\n📍 {h(shop_address)}" if shop_address else ""
+    eta_line = "\n" + t("eta_line", lang, eta=eta) if eta and status == "shipping" and otype == "delivery" else ""
+    return t(key, lang, code=order["code"], reason=reason, address=address, eta=eta_line)
+
+
+async def order_eta(order: dict, lang: str) -> str:
+    """Hudud bo'yicha yetkazish muddati mijoz tilida (hudud o'chirilgan bo'lsa saqlangan matn)."""
+    from . import regions
+
+    region = await regions.get_region(order["region_id"]) if order.get("region_id") else None
+    return regions.eta_text(region, lang) if region else order.get("delivery_eta") or ""
 
 
 async def notify_status_change(bot: Bot, order_id: int) -> None:
@@ -136,38 +167,36 @@ async def notify_status_change(bot: Bot, order_id: int) -> None:
     if order["status"] == "delivered":
         await notify_managers_done(bot, order)
     lang = await lang_of(order["user_id"])
-    text = customer_status_text(order, lang, await db.get_setting("cafe_address"))
+    text = customer_status_text(order, lang, await db.get_setting("shop_address"), await order_eta(order, lang))
     if not text:
         return
     try:
         await bot.send_message(order["user_id"], text, reply_markup=order_track_kb(order["code"], lang))
-        if order["status"] == "delivering" and (order.get("order_type") or "delivery") == "pickup":
+        if order["status"] == "shipping" and (order.get("order_type") or "delivery") == "pickup":
             await send_pickup_location(bot, order["user_id"], lang)
         if order["status"] == "delivered" and not await db.get_review(order_id):
             await bot.send_message(order["user_id"], t("rate_ask", lang), reply_markup=rating_kb(order_id))
-    except (TelegramForbiddenError, TelegramBadRequest) as e:
+    except SAFE as e:
         log.warning("Mijozga holat yuborilmadi %s: %s", order["user_id"], e)
 
 
 async def send_pickup_location(bot: Bot, chat_id: int, lang: str) -> None:
-    """Olib ketish buyurtmasi tayyor bo'lganda kafe joylashuvini Telegram lokatsiyasi sifatida yuboradi."""
-    from aiogram.types import InlineKeyboardButton
-
-    from .geo import cafe_location
+    """Olib ketish buyurtmasi tayyor bo'lganda do'kon joylashuvini Telegram lokatsiyasi sifatida yuboradi."""
+    from .geo import shop_location
 
     s = await db.get_settings()
-    url = (s.get("cafe_map_url") or "").strip()
-    address = (s.get("cafe_address") or "").strip()
+    url = (s.get("shop_map_url") or "").strip()
+    address = (s.get("shop_address") or "").strip()
     kb = InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text=t("map_btn", lang), url=url)]]) if url else None
-    coords = await cafe_location()
+    coords = await shop_location()
     try:
         if coords:
-            await bot.send_venue(chat_id, coords[0], coords[1], title="Yaproq go'sht",
-                                 address=address or t("pickup_cafe", lang), reply_markup=kb)
+            await bot.send_venue(chat_id, coords[0], coords[1], title=shop_name(),
+                                 address=address or t("pickup_shop", lang), reply_markup=kb)
         elif url or address:
             await bot.send_message(chat_id, t("pickup_location", lang, address=f"\n{h(address)}" if address else ""),
                                    reply_markup=kb, disable_web_page_preview=True)
-    except (TelegramForbiddenError, TelegramBadRequest) as e:
+    except SAFE as e:
         log.warning("Lokatsiya yuborilmadi %s: %s", chat_id, e)
 
 
@@ -184,41 +213,126 @@ async def notify_review(bot: Bot, order_id: int) -> None:
     )
     if review["comment"]:
         text += f"\n💬 {h(review['comment'])}"
-    for chat_id in await manager_ids():
-        try:
-            await bot.send_message(chat_id, text)
-        except (TelegramForbiddenError, TelegramBadRequest):
-            pass
+    await _send_many(bot, await manager_ids(), text)
 
 
-async def remind_scheduled(bot: Bot) -> None:
-    """Vaqtga buyurtmalar uchun xodimlarga eslatma (tayyorlash vaqti yaqinlashganda)."""
-    from datetime import timedelta
+# ---------------- kelganda xabar berish ----------------
 
-    from .utils import now
+async def notify_restocked(bot: Bot, variant_ids: list[int]) -> None:
+    """Qayta sotuvga chiqqan variantlar uchun obuna bo'lgan mijozlarga xabar."""
+    for vid in variant_ids:
+        v = await products.get_variant(vid)
+        p = await products.get_product(v["product_id"]) if v else None
+        if not p or not products.sellable(p, v):
+            continue
+        for uid in await inventory.pop_alerts(vid):
+            lang = await lang_of(uid)
+            label = variant_label(p, v, lang)
+            item = f"<b>{h(p['name'])}</b>" + (f" ({h(label)})" if label else "")
+            rows = [[InlineKeyboardButton(text=t("view_btn", lang), callback_data=f"sh:p:{p['id']}:{vid}:1")]]
+            if webapp_ready():
+                from aiogram.types import WebAppInfo
 
-    prep = int(await db.get_setting("prep_time") or 40)
-    until = (now() + timedelta(minutes=prep + 10)).strftime("%Y-%m-%d %H:%M")
-    for order in await db.due_scheduled_orders(until):
-        await db.mark_reminded(order["id"])
-        items = await db.get_order_items(order["id"])
-        for chat_id in await staff_recipients():
+                rows.append([InlineKeyboardButton(text=t("mini_inline", lang),
+                                                  web_app=WebAppInfo(url=webapp_url(f"p{p['id']}")))])
+            image = next((i["path"] for i in p["images"] if i["color"] and i["color"] in v["vals"]),
+                         p["images"][0]["path"] if p["images"] else "")
+            view = Rich().img(image).p(t("back_in_stock", lang, item=item))
             try:
-                msg = await send_order_card(bot, chat_id, order, items, "⏰ ESLATMA: tayyorlash vaqti",
-                                            order_staff_kb(order))
-                await db.save_order_message(order["id"], chat_id, msg.message_id)
-            except (TelegramForbiddenError, TelegramBadRequest):
+                await rich.send(bot, uid, view, InlineKeyboardMarkup(inline_keyboard=rows))
+            except SAFE:
                 pass
 
 
-async def scheduler_loop(bot: Bot) -> None:
-    while True:
-        try:
-            await remind_scheduled(bot)
-        except Exception:
-            log.exception("Eslatma xatosi")
-        await asyncio.sleep(60)
+# ---------------- buyurtma chati va holat rasmlari ----------------
 
+def _chat_staff_kb(order: dict) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="↩️ Javob berish", callback_data=f"och:{order['id']}"),
+        InlineKeyboardButton(text="🧾 Buyurtma", callback_data=f"ov:{order['id']}"),
+    ]])
+
+
+async def chat_recipients(order: dict) -> list[int]:
+    """Mijoz xabari buyurtmaga mas'ul xodimga, u bo'lmasa barcha xodimlarga boradi."""
+    if order.get("staff_id"):
+        return [order["staff_id"]]
+    return await staff_recipients()
+
+
+async def relay_customer_message(bot: Bot, order: dict, text: str = "", photo_path: str = "") -> None:
+    view = Rich().h(f"💬 Mijoz xabari · <code>{order['code']}</code>", 3)
+    view.p(f"👤 {h(order['customer_name'])} · {h(order['phone'])}")
+    if photo_path:
+        view.img(photo_path)
+    if text:
+        view.quote(h(text))
+    kb = _chat_staff_kb(order)
+    for chat_id in await chat_recipients(order):
+        try:
+            await rich.send(bot, chat_id, view, kb)
+        except SAFE:
+            pass
+
+
+async def relay_staff_message(bot: Bot, order: dict, text: str = "", photo_path: str = "") -> None:
+    lang = await lang_of(order["user_id"])
+    view = Rich()
+    if photo_path:
+        view.img(photo_path)
+    view.p(t("chat_from_shop", lang, code=order["code"], text=h(text) if text else "📷"))
+    kb = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text=t("chat_reply_btn", lang), callback_data=f"sh:ch:{order['code']}"),
+        InlineKeyboardButton(text=t("track_btn", lang), callback_data=f"sh:o:{order['code']}"),
+    ]])
+    try:
+        await rich.send(bot, order["user_id"], view, kb)
+    except SAFE as e:
+        log.warning("Mijozga chat xabari yuborilmadi %s: %s", order["user_id"], e)
+
+
+async def send_status_photo(bot: Bot, order: dict, media: dict) -> None:
+    """Xodim yuklagan holat rasmini mijozga rich xabar (rasm + izoh) qilib yuboradi."""
+    lang = await lang_of(order["user_id"])
+    if not media.get("path"):
+        return
+    caption = h(media["caption"]) if media.get("caption") else ""
+    view = Rich().img(media["path"], caption).p(
+        t("status_photo", lang, code=order["code"], status=status_text(media["status"], order["order_type"], lang)))
+    try:
+        await rich.send(bot, order["user_id"], view, order_track_kb(order["code"], lang))
+    except SAFE as e:
+        log.warning("Holat rasmi yuborilmadi %s: %s", order["user_id"], e)
+
+
+async def save_telegram_photo(bot: Bot, file_id: str, prefix: str = "chat") -> str:
+    """Telegram rasmini uploads/ ga saqlaydi (Mini App va admin panelda ko'rinishi uchun)."""
+    import uuid
+
+    config.uploads_dir.mkdir(parents=True, exist_ok=True)
+    name = f"{prefix}_{uuid.uuid4().hex[:12]}.jpg"
+    try:
+        file = await bot.get_file(file_id)
+        await bot.download_file(file.file_path, config.uploads_dir / name)
+    except Exception as e:  # noqa: BLE001
+        log.warning("Rasmni saqlab bo'lmadi: %s", e)
+        return ""
+    rich.PHOTO_CACHE[f"uploads/{name}"] = file_id  # rich xabarlarda qayta yuklamasdan ishlatiladi
+    return f"uploads/{name}"
+
+
+async def add_chat_and_relay(bot: Bot | None, order: dict, sender: str, user_id: int | None,
+                             text: str = "", photo_path: str = "", file_id: str = "") -> None:
+    await chat.add_message(order["id"], sender, user_id, text, photo_path, file_id)
+    if not bot:
+        return
+    if sender == "customer":
+        await relay_customer_message(bot, order, text, photo_path)
+    else:
+        await relay_staff_message(bot, order, text, photo_path)
+
+
+# ---------------- rassilka ----------------
 
 async def send_post(bot: Bot, chat_id: int, from_chat_id: int, message_ids: list[int],
                     mode: str = "copy", reply_markup: InlineKeyboardMarkup | None = None) -> None:

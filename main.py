@@ -9,27 +9,37 @@ from aiohttp import web
 
 from app import db
 from app.backup import daily_backup_loop
-from app.notify import scheduler_loop
 from app.config import config
 from app.handlers import setup_routers
 from app.keyboards import webapp_ready, webapp_url
+from app.rich import RichSessionMiddleware
 from app.webapp import create_app
 
-log = logging.getLogger("yaproq")
+log = logging.getLogger("shop")
 
 
 async def setup_bot_ui(bot: Bot) -> None:
     await bot.set_my_commands([
         BotCommand(command="start", description="Botni ishga tushirish"),
-        BotCommand(command="menu", description="Menyu / buyurtma berish"),
+        BotCommand(command="catalog", description="Katalog"),
+        BotCommand(command="search", description="Qidiruv"),
         BotCommand(command="cart", description="Savat"),
         BotCommand(command="orders", description="Buyurtmalarim"),
         BotCommand(command="lang", description="Til / Язык"),
         BotCommand(command="help", description="Yordam"),
     ])
+    await bot.set_my_commands([
+        BotCommand(command="start", description="Перезапустить бота"),
+        BotCommand(command="catalog", description="Каталог"),
+        BotCommand(command="search", description="Поиск"),
+        BotCommand(command="cart", description="Корзина"),
+        BotCommand(command="orders", description="Мои заказы"),
+        BotCommand(command="lang", description="Til / Язык"),
+        BotCommand(command="help", description="Помощь"),
+    ], language_code="ru")
     if webapp_ready():
         await bot.set_chat_menu_button(
-            menu_button=MenuButtonWebApp(text="🍔 Menyu", web_app=WebAppInfo(url=webapp_url()))
+            menu_button=MenuButtonWebApp(text="🛍 Do'kon", web_app=WebAppInfo(url=webapp_url()))
         )
     else:
         log.warning("WEBAPP_URL https emas — mini app tugmasi o'rnatilmadi")
@@ -40,8 +50,10 @@ async def main() -> None:
     if not config.bot_token:
         raise SystemExit("BOT_TOKEN topilmadi. .env faylini to'ldiring (.env.example ga qarang).")
 
-    await db.init_db(config.db_path)
+    await db.init_db(config.db_path, seed_demo=config.demo_data)
     bot = Bot(config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    # barcha oddiy matnli xabarlar Telegram rich message formatida yuboriladi (rad etilsa — oddiy matn)
+    bot.session.middleware(RichSessionMiddleware())
     dp = Dispatcher()
     dp.include_router(setup_routers())
 
@@ -53,7 +65,7 @@ async def main() -> None:
     try:
         await setup_bot_ui(bot)
         await bot.delete_webhook(drop_pending_updates=False)
-        tasks = [asyncio.create_task(daily_backup_loop(bot)), asyncio.create_task(scheduler_loop(bot))]
+        tasks = [asyncio.create_task(daily_backup_loop(bot))]
         await dp.start_polling(bot)
         for task in tasks:
             task.cancel()

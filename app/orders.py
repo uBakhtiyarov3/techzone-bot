@@ -1,16 +1,17 @@
 """Buyurtma qoidalari — Mini App va bot ichidagi savat uchun umumiy.
 
-Narx hisoblash (chegirmalar, promo-kod, yetkazish), ish vaqti va vaqtga buyurtma tekshiruvi shu yerda.
+Narx hisoblash (chegirma, promo-kod, hudud bo'yicha yetkazish), qoldiq tekshiruvi va band qilish shu yerda.
 """
 import re
 from datetime import datetime, timedelta
 
-from . import db, hours
-from .catalog import norm_lang, variant_price
+from . import db, hours, inventory, products, regions
+from .catalog import norm_lang, variant_label, variant_price
 from .i18n import money_l, t
 from .utils import TZ, now
 
 ORDER_COOLDOWN_SEC = 20
+MAX_QTY = 20
 PHONE_RE = re.compile(r"^\+998\d{9}$")
 ORDER_TYPES = ("delivery", "pickup")
 
@@ -26,9 +27,6 @@ class OrderError(Exception):
 
     def text(self, lang: str = "uz") -> str:
         params = {k: (money_l(v, lang) if k in ("min",) else v) for k, v in self.params.items()}
-        if self.key == "e_closed":
-            nxt = self.params.get("next")
-            params["next"] = (" " + t("opens_short", lang, when=nxt)) if nxt else ""
         return t(self.key, lang, **params)
 
     @property
@@ -52,12 +50,12 @@ def _when_label(dt: datetime | None) -> str | None:
 
 def public_settings(s: dict) -> dict:
     is_open = hours.is_open_at(s)
+    mode = s.get("mode") or "auto"
     return {
-        "is_open": is_open,
-        "mode": s.get("mode") or "auto",
-        "accepting": (s.get("mode") or "auto") != "closed",
+        "is_open": is_open,                     # operatorlar hozir ishlayaptimi
+        "mode": mode,
+        "accepting": mode != "closed",          # buyurtma qabul qilinadimi (24/7)
         "next_open": None if is_open else _when_label(hours.next_opening(s)),
-        "delivery_fee": int(s.get("delivery_fee") or 0),
         "min_order": int(s.get("min_order") or 0),
         "phone": s.get("phone") or "",
         "work_hours": hours.today_hours(s) or "",
@@ -65,35 +63,44 @@ def public_settings(s: dict) -> dict:
         "schedule_ru": hours.schedule_summary(s, "ru"),
         "delivery_enabled": s.get("delivery_enabled", "1") == "1",
         "pickup_enabled": s.get("pickup_enabled", "1") == "1",
-        "cafe_address": s.get("cafe_address") or "",
-        "cafe_map_url": s.get("cafe_map_url") or "",
+        "card_enabled": s.get("card_enabled", "0") == "1",
+        "shop_address": s.get("shop_address") or "",
+        "shop_map_url": s.get("shop_map_url") or "",
+        "low_stock": int(s.get("low_stock") or 3),
     }
 
 
 async def resolve_items(raw_items) -> list[dict]:
-    """[{product_id, variant, qty}] -> narxlari (chegirma bilan) bazadan olingan pozitsiyalar."""
+    """[{variant_id, qty}] -> narxi (chegirma bilan) va tannarxi bazadan olingan pozitsiyalar."""
     if not isinstance(raw_items, list) or not raw_items:
         raise OrderError("e_empty_cart")
     if len(raw_items) > 30:
         raise OrderError("e_too_many")
-    items = []
+    merged: dict[int, int] = {}
     for raw in raw_items:
         try:
-            pid, vidx, qty = int(raw["product_id"]), int(raw.get("variant", 0)), int(raw["qty"])
+            vid, qty = int(raw["variant_id"]), int(raw["qty"])
         except (KeyError, TypeError, ValueError):
             raise OrderError("e_cart")
-        if not 1 <= qty <= 50:
+        if not 1 <= qty <= MAX_QTY:
             raise OrderError("e_qty")
-        product = await db.get_product(pid)
-        cat = await db.get_category(product["category_id"]) if product else None
-        if not product or not product["is_available"] or not cat or not cat["is_active"]:
+        merged[vid] = merged.get(vid, 0) + qty
+    items = []
+    for vid, qty in merged.items():
+        v = await products.get_variant(vid)
+        p = await products.get_product(v["product_id"]) if v else None
+        if not v or not p or v["is_deleted"] or not v["is_active"] or not p["is_active"] \
+                or not await products.category_visible(p["category_id"]):
             raise OrderError("e_unavailable", 409)
-        if not 0 <= vidx < len(product["variants"]):
-            raise OrderError("e_variant", 409)
-        price, _old = variant_price(product, vidx)
+        label = variant_label(p, v)
+        if v["stock"] < qty:
+            if v["stock"] <= 0:
+                raise OrderError("e_unavailable", 409)
+            raise OrderError("e_stock", 409, item=p["name"] + (f" ({label})" if label else ""), left=v["stock"])
+        price, _old = variant_price(p, v)
         items.append({
-            "product_id": pid, "name": product["name"], "variant": product["variants"][vidx]["name"],
-            "price": price, "qty": qty,
+            "product_id": p["id"], "variant_id": vid, "name": p["name"], "variant": label,
+            "price": price, "cost": v["cost"], "qty": qty, "warranty_months": p["warranty_months"],
         })
     return items
 
@@ -151,13 +158,16 @@ async def check_promo(code: str, user_id: int, subtotal: int, order_type: str) -
 
 # ---------------- hisob-kitob ----------------
 
-async def quote(user_id: int, raw_items, order_type: str = "delivery", promo_code: str = "",
-                lang: str = "uz") -> dict:
-    """Savat summasi: mahsulotlar, chegirma, yetkazish, jami. Promo xato bo'lsa OrderError."""
+async def quote(user_id: int, raw_items, order_type: str = "delivery", region_id: int | None = None,
+                promo_code: str = "", lang: str = "uz") -> dict:
+    """Savat summasi: mahsulotlar, chegirma, yetkazish (hududga qarab), jami. Xato bo'lsa OrderError."""
     settings = public_settings(await db.get_settings())
     items = await resolve_items(raw_items)
     subtotal = sum(i["price"] * i["qty"] for i in items)
-    fee = settings["delivery_fee"] if order_type == "delivery" else 0
+    region = await regions.get_region(int(region_id)) if region_id and order_type == "delivery" else None
+    if region and not region["is_active"]:
+        region = None
+    fee = regions.delivery_fee(region, subtotal) if region else 0
     discount, promo, label = 0, None, ""
     if promo_code:
         promo, discount, free_delivery = await check_promo(promo_code, user_id, subtotal, order_type)
@@ -169,17 +179,17 @@ async def quote(user_id: int, raw_items, order_type: str = "delivery", promo_cod
         "subtotal": subtotal,
         "discount": discount,
         "delivery_fee": fee,
+        "region": regions.region_public(region, lang) if region else None,
         "total": max(0, subtotal - discount) + fee,
         "promo_code": promo["code"] if promo else "",
         "promo_label": label,
-        "min_order": settings["min_order"] if order_type == "delivery" else 0,
+        "min_order": settings["min_order"],
     }
 
 
 async def place_order(user_id: int, data: dict, raw_items) -> int:
-    """Tekshiradi va buyurtma yaratadi. Xatoda OrderError. order_id qaytaradi."""
-    raw_settings = await db.get_settings()
-    settings = public_settings(raw_settings)
+    """Tekshiradi, qoldiqni band qiladi va buyurtma yaratadi. Xatoda OrderError. order_id qaytaradi."""
+    settings = public_settings(await db.get_settings())
     lang = norm_lang(data.get("lang"))
 
     order_type = data.get("order_type") or "delivery"
@@ -188,33 +198,29 @@ async def place_order(user_id: int, data: dict, raw_items) -> int:
     if not settings["accepting"]:
         raise OrderError("e_closed_full")
 
-    scheduled_at = str(data.get("scheduled_at") or "").strip()
-    if scheduled_at:
-        if not hours.valid_slot(raw_settings, scheduled_at):
-            raise OrderError("e_slot")
-    elif not settings["is_open"]:
-        raise OrderError("e_closed", next=settings["next_open"])
-
     name = str(data.get("name") or "").strip()
-    address = str(data.get("address") or "").strip() if order_type == "delivery" else ""
     comment = str(data.get("comment") or "").strip()[:300]
     phone = normalize_phone(str(data.get("phone") or ""))
     payment = data.get("payment_method")
-
+    region, address = None, ""
     if not 2 <= len(name) <= 64:
         raise OrderError("e_name")
     if not phone:
         raise OrderError("e_phone")
-    if order_type == "delivery" and not 5 <= len(address) <= 300:
-        raise OrderError("e_address")
+    if order_type == "delivery":
+        try:
+            region = await regions.get_region(int(data.get("region_id") or 0))
+        except (TypeError, ValueError):
+            region = None
+        if not region or not region["is_active"]:
+            raise OrderError("e_region")
+        address = str(data.get("address") or "").strip()
+        if not 5 <= len(address) <= 300:
+            raise OrderError("e_address")
     if payment == "card":
         raise OrderError("e_card")
     if payment != "cash":
         raise OrderError("e_payment")
-
-    q = await quote(user_id, raw_items, order_type, str(data.get("promo_code") or "").strip(), lang)
-    if q["min_order"] and q["subtotal"] < q["min_order"]:
-        raise OrderError("e_min_order", min=q["min_order"])
 
     last = await db.scalar("SELECT MAX(created_at) FROM orders WHERE user_id = ?", user_id)
     if last:
@@ -222,15 +228,36 @@ async def place_order(user_id: int, data: dict, raw_items) -> int:
         if now() - last_dt < timedelta(seconds=ORDER_COOLDOWN_SEC):
             raise OrderError("e_cooldown", 429)
 
-    order_id = await db.create_order(
-        user_id,
-        {
-            "name": name, "phone": phone, "address": address, "comment": comment, "payment_method": payment,
-            "order_type": order_type, "scheduled_at": scheduled_at, "promo_code": q["promo_code"], "lang": lang,
-        },
-        q["items"],
-        q["delivery_fee"],
-        q["discount"],
-    )
-    await db.update_user_profile(user_id, name, phone, address or (await db.get_user(user_id) or {}).get("address") or "")
+    async with inventory.STOCK_LOCK:
+        q = await quote(user_id, raw_items, order_type, region["id"] if region else None,
+                        str(data.get("promo_code") or "").strip(), lang)
+        if q["min_order"] and q["subtotal"] < q["min_order"]:
+            raise OrderError("e_min_order", min=q["min_order"])
+        order_id = await db.create_order(user_id, {
+            "order_type": order_type, "customer_name": name, "phone": phone,
+            "region_id": region["id"] if region else None,
+            "region_name": region["name"] if region else "",
+            "delivery_eta": regions.eta_text(region, "uz") if region else "",
+            "address": address, "comment": comment, "payment_method": payment,
+            "subtotal": q["subtotal"], "discount": q["discount"], "promo_code": q["promo_code"],
+            "delivery_fee": q["delivery_fee"], "total": q["total"], "lang": lang,
+        }, q["items"])
+        order = await db.get_order(order_id)
+        try:
+            await inventory.reserve(q["items"], order["code"], user_id)
+        except inventory.OutOfStock as e:
+            await db.delete_order(order_id)
+            item = next(i for i in q["items"] if i["variant_id"] == e.variant_id)
+            raise OrderError("e_stock", 409, item=item["name"], left=e.left)
+    await db.update_user_profile(user_id, name, phone, address, region["id"] if region else None)
     return order_id
+
+
+async def cancel_order(order: dict, by_user: int | None, reason: str) -> list[int]:
+    """Buyurtmani bekor qiladi va qoldiqni omborga qaytaradi. Qayta sotuvga chiqqan variantlar ro'yxati."""
+    async with inventory.STOCK_LOCK:
+        current = await db.get_order(order["id"])
+        if not current or current["status"] == "cancelled":
+            return []
+        await db.set_order_status(order["id"], "cancelled", by_user, reason[:200])
+        return await inventory.release(order["id"], order["code"], by_user)

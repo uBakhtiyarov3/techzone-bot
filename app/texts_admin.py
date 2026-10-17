@@ -5,53 +5,60 @@ from .i18n import T, default_text, placeholders
 
 GROUPS: list[tuple[str, list[str]]] = [
     ("🏠 Start va umumiy", [
-        "choose_lang", "lang_saved", "greet", "account_created", "closed_now", "opens_short", "opens_at",
+        "choose_lang", "lang_saved", "greet", "account_created", "closed_now", "after_hours",
         "how_order", "ways_mini", "ways_bot", "start_mini_btn", "start_bot_btn", "main_menu", "open_mini_text",
         "open_mini_btn", "contact", "phone_soon", "address_line", "about", "feedback_sent", "help",
-        "reply_from_cafe",
+        "reply_from_shop",
     ]),
     ("⌨️ Pastki menyu tugmalari", ["b_"]),
-    ("📋 Menyu (bot ichida)", [
-        "menu_title", "choose_product", "cat_empty", "back_cats", "back", "cart_btn", "orders_btn", "mini_inline",
-        "from", "chosen", "pcs", "add_btn", "added", "added_toast", "unavailable", "qty_limit",
+    ("📱 Katalog (bot ichida)", [
+        "catalog_title", "choose_product", "all_brands", "cat_empty", "back_cats", "back", "cart_btn", "orders_btn",
+        "mini_inline", "from", "pcs", "add_btn", "added", "added_toast", "unavailable", "qty_limit", "in_stock",
+        "low_stock", "out_of_stock", "warranty", "specs_", "photos_btn", "view_btn",
     ]),
+    ("❤️ Sevimlilar, qidiruv, kelganda xabar", ["fav_", "favorites_", "alert_", "back_in_stock", "search_"]),
     ("🛒 Savat", [
-        "cart_empty", "to_menu", "cart_title", "items_sum", "delivery", "free", "discount", "total",
-        "min_order_warn", "clear", "menu_btn", "checkout_btn", "cart_cleared",
+        "cart_empty", "to_catalog", "cart_title", "items_sum", "delivery", "free", "discount", "total",
+        "min_order_warn", "clear", "catalog_btn", "checkout_btn", "cart_cleared", "stock_trimmed",
     ]),
     ("📝 Rasmiylashtirish", [
-        "co_", "ask_", "bad_", "send_", "location_", "type_", "asap", "today", "tomorrow", "pick_time", "no_slots",
-        "promo_ok", "payment_hint", "pay_", "check_title", "payment", "confirm_btn", "refill_btn", "cancel_btn",
-        "form_stale", "order_placed", "order_sent_toast", "thanks", "pickup_", "when_",
+        "co_", "ask_", "bad_", "send_", "location_", "type_", "region_line", "promo_ok", "payment_hint", "pay_",
+        "check_title", "payment", "confirm_btn", "refill_btn", "cancel_btn", "form_stale", "order_placed",
+        "order_sent_toast", "thanks", "pickup_", "map_btn", "eta_line",
     ]),
     ("📦 Buyurtmalarim", [
         "no_orders", "orders_title", "order_title", "reason", "refresh", "refreshed", "cancel_order_btn",
         "repeat_btn", "back_orders", "order_not_found", "cancel_not_allowed", "order_cancelled_toast",
-        "repeat_added", "repeat_none", "your_rating", "rate_btn",
+        "repeat_added", "repeat_none", "your_rating", "rate_btn", "warranty_card", "warranty_until", "media_btn",
     ]),
-    ("🔔 Holat o'zgarishi xabarlari", ["sent_new", "track_btn", "st_"]),
+    ("💬 Buyurtma chati", ["chat_"]),
+    ("🔔 Holat o'zgarishi xabarlari", ["sent_new", "track_btn", "st_", "status_photo"]),
     ("⭐ Baholash", ["rate_ask", "rate_thanks", "review_saved", "already_rated", "rate_not_ready"]),
     ("🏷 Holat nomlari", ["s_", "step_new"]),
     ("⚠️ Xato xabarlari", ["e_"]),
     ("🎁 Promo-kod turlari", ["promo_percent", "promo_fixed", "promo_free_delivery"]),
-    ("📱 Mini ilova", ["w_"]),
+    ("✨ Mini ilova", ["w_"]),
 ]
 
 # Oddiy matn (HTML teglarisiz) bo'lishi kerak bo'lganlar: tugmalar, ogohlantirishlar, Mini App matnlari
 PLAIN_PREFIXES = ("b_", "w_", "e_", "s_", "pay_", "type_", "co_")
 PLAIN_KEYS = {
     "start_mini_btn", "start_bot_btn", "open_mini_btn", "back_cats", "back", "cart_btn", "orders_btn", "mini_inline",
-    "from", "pcs", "add_btn", "added_toast", "unavailable", "qty_limit", "to_menu", "clear", "menu_btn",
-    "checkout_btn", "send_phone_btn", "send_location_btn", "asap", "today", "tomorrow", "confirm_btn",
+    "from", "pcs", "add_btn", "added_toast", "unavailable", "qty_limit", "to_catalog", "clear", "catalog_btn",
+    "checkout_btn", "send_phone_btn", "send_location_btn", "confirm_btn", "all_brands", "specs_btn", "photos_btn",
     "refill_btn", "cancel_btn", "form_stale", "order_sent_toast", "refresh", "refreshed", "cancel_order_btn",
     "repeat_btn", "back_orders", "order_not_found", "cancel_not_allowed", "order_cancelled_toast", "rate_btn",
-    "track_btn", "already_rated", "rate_not_ready", "lang_saved", "step_new", "location_label",
+    "track_btn", "already_rated", "rate_not_ready", "lang_saved", "step_new", "location_label", "fav_add_btn",
+    "fav_del_btn", "fav_added", "fav_removed", "alert_btn", "alert_on", "view_btn", "media_btn", "chat_btn",
+    "chat_btn_unread", "chat_reply_btn", "chat_end_btn", "chat_you", "chat_empty", "in_stock", "low_stock",
+    "out_of_stock", "region_line", "eta_line", "map_btn",
     "promo_percent", "promo_fixed", "promo_free_delivery", "pay_card_alert", "items_sum", "delivery", "free",
-    "discount", "total", "payment", "phone_soon", "chosen", "when_asap", "when_at", "pickup_cafe",
+    "discount", "total", "payment", "phone_soon", "pickup_shop",
 }
 # Telegram callback alert (answerCallbackQuery) — 200 belgigacha
 ALERT_KEYS = {"pay_card_alert", "form_stale", "already_rated", "rate_not_ready", "order_not_found",
-              "cancel_not_allowed", "unavailable", "qty_limit", "no_slots", "added_toast", "lang_saved"}
+              "cancel_not_allowed", "unavailable", "qty_limit", "added_toast", "lang_saved", "fav_added",
+              "fav_removed", "alert_on"}
 ALLOWED_TAGS = {"b", "strong", "i", "em", "u", "ins", "s", "strike", "del", "code", "pre", "a", "tg-spoiler",
                 "blockquote", "span", "tg-emoji"}
 
@@ -108,7 +115,7 @@ def validate(key: str, lang: str, value: str) -> list[str]:
         return ["Bunday matn kaliti yo'q"]
     if len(value) > max_len(key):
         errors.append(f"Juda uzun: {len(value)} / {max_len(key)} belgi")
-    allowed = placeholders(default_text(key, lang)) | placeholders(default_text(key, "uz"))
+    allowed = placeholders(default_text(key, lang)) | placeholders(default_text(key, "uz")) | {"shop"}
     used = placeholders(value)
     unknown = used - allowed
     if "<xato>" in used:
@@ -138,7 +145,7 @@ def catalog(overrides: dict) -> list[dict]:
             "group": group_of(key),
             "plain": is_plain(key),
             "max": max_len(key),
-            "vars": sorted(placeholders(default_text(key, "uz")) | placeholders(default_text(key, "ru"))),
+            "vars": sorted(placeholders(default_text(key, "uz")) | placeholders(default_text(key, "ru")) | {"shop"}),
             "uz": {"default": default_text(key, "uz"), "value": overrides.get((key, "uz"))},
             "ru": {"default": default_text(key, "ru"), "value": overrides.get((key, "ru"))},
         })

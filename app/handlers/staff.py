@@ -1,13 +1,19 @@
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject, StateFilter
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from .. import db
-from ..keyboards import B, ikb, order_staff_kb, staff_kb
+from .. import chat, db
+from ..keyboards import B, cancel_kb, ikb, order_staff_kb, staff_kb
+from ..notify import (
+    add_chat_and_relay, notify_restocked, notify_status_change, refresh_staff_messages, save_telegram_photo,
+    send_status_photo,
+)
 from ..order_card import send_order_card
-from ..notify import notify_status_change, refresh_staff_messages
+from ..orders import cancel_order
 from ..roles import IsStaff
-from ..utils import ACTIVE_STATUSES, money, next_status, now, status_label
+from ..utils import ACTIVE_STATUSES, h, item_title, money, next_status, now, status_label
 
 router = Router(name="staff")
 router.message.filter(IsStaff)
@@ -16,23 +22,31 @@ router.callback_query.filter(IsStaff)
 CANCEL_REASONS = [
     "Mijoz bekor qildi",
     "Mijoz bilan bog'lanib bo'lmadi",
-    "Mahsulot tugagan",
+    "Mahsulot omborda qolmagan",
     "Manzil yetkazish hududidan tashqarida",
     "Boshqa sabab",
 ]
+
+
+class StaffInput(StatesGroup):
+    photo = State()
+    chat = State()
+    serial = State()
 
 
 @router.message(StateFilter(None), F.text == B.STAFF)
 @router.message(Command("staff"))
 async def staff_home(message: Message) -> None:
     new = len(await db.get_orders_by_status(("new",), limit=100))
-    active = len(await db.get_orders_by_status(("accepted", "cooking", "delivering"), limit=100))
+    active = len(await db.get_orders_by_status(("accepted", "packing", "shipping"), limit=100))
+    unread = len(await chat.unread_orders_for_staff())
     await message.answer(
         "👷 <b>Xodim kabineti</b>\n\n"
         f"🆕 Yangi buyurtmalar: <b>{new}</b>\n"
-        f"🔄 Jarayondagi: <b>{active}</b>\n\n"
-        "Yangi buyurtma tushganda sizga avtomatik xabar keladi. "
-        "Xabardagi tugmalar orqali holatni yangilang.",
+        f"🔄 Jarayondagi: <b>{active}</b>\n"
+        f"💬 Javobsiz chatlar: <b>{unread}</b>\n\n"
+        "Yangi buyurtma tushganda sizga avtomatik xabar keladi. Kartadagi tugmalar orqali holatni yangilang, "
+        "📸 rasm yuboring (masalan, yig'ilgan buyurtma) va mijoz bilan yozishing.",
         reply_markup=staff_kb(),
     )
 
@@ -44,7 +58,7 @@ async def _send_order_list(message: Message, orders: list[dict], empty: str) -> 
     for o in reversed(orders[:10]):
         items = await db.get_order_items(o["id"])
         msg = await send_order_card(message.bot, message.chat.id, o, items, reply_markup=order_staff_kb(o))
-        # shu xabar ham holat o'zgarganda yangilanib turadi
+        # shu karta ham holat o'zgarganda yangilanib turadi
         await db.save_order_message(o["id"], msg.chat.id, msg.message_id)
     if len(orders) > 10:
         await message.answer(f"... va yana {len(orders) - 10} ta buyurtma.")
@@ -57,7 +71,7 @@ async def new_orders(message: Message) -> None:
 
 @router.message(StateFilter(None), F.text == B.ACTIVE_ORDERS)
 async def active_orders(message: Message) -> None:
-    orders = await db.get_orders_by_status(("accepted", "cooking", "delivering"))
+    orders = await db.get_orders_by_status(("accepted", "packing", "shipping"))
     await _send_order_list(message, orders, "Jarayondagi buyurtmalar yo'q.")
 
 
@@ -81,15 +95,15 @@ async def today(message: Message) -> None:
     )
     await message.answer(
         "📈 <b>Bugungi natija</b>\n\n"
-        f"Siz yetkazgan: <b>{mine['c']}</b> ta · {money(mine['s'])}\n"
-        f"Jami yetkazilgan: <b>{allc['c']}</b> ta · {money(allc['s'])}"
+        f"Siz yakunlagan: <b>{mine['c']}</b> ta · {money(mine['s'])}\n"
+        f"Jami yakunlangan: <b>{allc['c']}</b> ta · {money(allc['s'])}"
     )
 
 
 @router.message(Command("order"))
 async def show_order(message: Message, command: CommandObject) -> None:
     if not command.args:
-        await message.answer("Foydalanish: /order YG-482917 (yoki faqat 482917)")
+        await message.answer("Foydalanish: /order TZ-482917 (yoki faqat 482917)")
         return
     order = await db.find_order(command.args)
     if not order:
@@ -150,6 +164,114 @@ async def cancel_confirm(call: CallbackQuery, bot: Bot) -> None:
     if not order or order["status"] not in ACTIVE_STATUSES:
         await call.answer("Bu buyurtmani bekor qilib bo'lmaydi", show_alert=True)
         return
-    await db.set_order_status(order["id"], "cancelled", call.from_user.id, CANCEL_REASONS[int(idx)])
-    await call.answer("Buyurtma bekor qilindi")
+    restocked = await cancel_order(order, call.from_user.id, CANCEL_REASONS[int(idx)])
+    await call.answer("Buyurtma bekor qilindi, qoldiq omborga qaytdi")
     await notify_status_change(bot, order["id"])
+    await notify_restocked(bot, restocked)
+
+
+# ---------------- holat rasmi, chat, IMEI ----------------
+
+async def _start_input(call: CallbackQuery, state: FSMContext, kind: State, prompt: str) -> dict | None:
+    order = await db.get_order(int(call.data.split(":")[1]))
+    if not order:
+        await call.answer("Buyurtma topilmadi", show_alert=True)
+        return None
+    await state.set_state(kind)
+    await state.update_data(order_id=order["id"])
+    await call.answer()
+    await call.message.answer(prompt.format(code=order["code"]), reply_markup=cancel_kb())
+    return order
+
+
+@router.callback_query(F.data.startswith("oph:"))
+async def photo_start(call: CallbackQuery, state: FSMContext) -> None:
+    await _start_input(call, state, StaffInput.photo,
+                       "📸 <b>{code}</b> uchun rasm yuboring (masalan, yig'ilgan buyurtma, qadoq yoki yuk xati).\n"
+                       "Rasm izohi (caption) mijozga ham ko'rinadi.")
+
+
+@router.callback_query(F.data.startswith("och:"))
+async def chat_start(call: CallbackQuery, state: FSMContext) -> None:
+    order = await _start_input(call, state, StaffInput.chat, "💬 <b>{code}</b> — mijozga xabar yozing (matn yoki rasm):")
+    if order:
+        await chat.mark_seen(order["id"], "staff")
+        history = (await chat.get_messages(order["id"]))[-6:]
+        if history:
+            lines = [f"{'👤' if m['sender'] == 'customer' else '🏬'} {h(m['text'] or '📷')}" for m in history]
+            await call.message.answer("<b>Oxirgi xabarlar:</b>\n" + "\n".join(lines))
+
+
+@router.callback_query(F.data.startswith("osn:"))
+async def serial_start(call: CallbackQuery, state: FSMContext) -> None:
+    order = await db.get_order(int(call.data.split(":")[1]))
+    items = await db.get_order_items(order["id"]) if order else []
+    lines = "\n".join(f"{i}. {h(item_title(it))} × {it['qty']}" + (f" — <code>{h(it['serial'])}</code>" if it["serial"] else "")
+                      for i, it in enumerate(items, 1))
+    await _start_input(call, state, StaffInput.serial,
+                       "🔢 <b>{code}</b> — IMEI yoki seriya raqamlarini har bir pozitsiya uchun alohida qatorda yuboring "
+                       "(tartib bo'yicha). Kafolat kartasida ko'rinadi.\n\n" + lines.replace("{", "(").replace("}", ")"))
+
+
+@router.message(StateFilter(StaffInput), F.text == B.CANCEL)
+async def input_cancel(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await message.answer("Bekor qilindi.", reply_markup=staff_kb())
+
+
+async def _state_order(state: FSMContext) -> dict | None:
+    return await db.get_order((await state.get_data()).get("order_id") or 0)
+
+
+@router.message(StaffInput.photo, F.photo)
+async def photo_save(message: Message, state: FSMContext, bot: Bot) -> None:
+    order = await _state_order(state)
+    await state.clear()
+    if not order:
+        await message.answer("Buyurtma topilmadi.", reply_markup=staff_kb())
+        return
+    file_id = message.photo[-1].file_id
+    path = await save_telegram_photo(bot, file_id, "status")
+    media_id = await chat.add_media(order["id"], order["status"], path, file_id, message.caption or "",
+                                    message.from_user.id)
+    media = next(m for m in await chat.get_media(order["id"]) if m["id"] == media_id)
+    await send_status_photo(bot, order, media)
+    await message.answer(f"✅ Rasm mijozga yuborildi ({status_label(order['status'], order['order_type'])}).",
+                         reply_markup=staff_kb())
+
+
+@router.message(StaffInput.photo)
+async def photo_wrong(message: Message) -> None:
+    await message.answer("Iltimos, rasm yuboring yoki «🚫 Bekor qilish» ni bosing.")
+
+
+@router.message(StaffInput.chat, F.text | F.photo)
+async def chat_send(message: Message, state: FSMContext, bot: Bot) -> None:
+    order = await _state_order(state)
+    await state.clear()
+    if not order:
+        await message.answer("Buyurtma topilmadi.", reply_markup=staff_kb())
+        return
+    path, file_id = "", ""
+    if message.photo:
+        file_id = message.photo[-1].file_id
+        path = await save_telegram_photo(bot, file_id)
+    await add_chat_and_relay(bot, order, "staff", message.from_user.id, (message.text or message.caption or ""),
+                             path, file_id)
+    await message.answer(f"✅ Xabar mijozga yuborildi ({order['code']}).", reply_markup=staff_kb())
+
+
+@router.message(StaffInput.serial, F.text)
+async def serial_save(message: Message, state: FSMContext, bot: Bot) -> None:
+    order = await _state_order(state)
+    await state.clear()
+    if not order:
+        await message.answer("Buyurtma topilmadi.", reply_markup=staff_kb())
+        return
+    items = await db.get_order_items(order["id"])
+    values = [x.strip() for x in message.text.splitlines() if x.strip()]
+    for it, serial in zip(items, values):
+        await db.set_item_serial(it["id"], serial)
+    await refresh_staff_messages(bot, order["id"])
+    await message.answer(f"✅ {min(len(items), len(values))} ta pozitsiyaga IMEI/seriya saqlandi.",
+                         reply_markup=staff_kb())
