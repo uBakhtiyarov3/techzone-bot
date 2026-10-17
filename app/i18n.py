@@ -238,6 +238,50 @@ T: dict[str, dict[str, str]] = {
     "chat_reply_btn": {"uz": "↩️ Javob yozish", "ru": "↩️ Ответить"},
     "chat_end_btn": {"uz": "✅ Tayyor", "ru": "✅ Готово"},
 
+    "chat_closed": {"uz": "Buyurtma yakunlangan — chat yopildi. Savol yoki muammo bo'lsa «⚠️ Muammo haqida xabar "
+                          "berish» tugmasidan foydalaning.",
+                    "ru": "Заказ завершён — чат закрыт. Если есть вопрос или проблема, нажмите «⚠️ Сообщить о проблеме»."},
+
+    # ---------- qaytarish va muammo xabari ----------
+    "issue_btn": {"uz": "⚠️ Muammo haqida xabar berish", "ru": "⚠️ Сообщить о проблеме"},
+    "return_btn": {"uz": "↩️ Qaytarish ({date} gacha)", "ru": "↩️ Вернуть (до {date})"},
+    "issue_ask": {"uz": "⚠️ <b>{code}</b> buyurtmasi bo'yicha muammo yoki savolingizni yozing. "
+                        "Mutaxassisimiz telefon orqali bog'lanadi.",
+                  "ru": "⚠️ Опишите проблему или вопрос по заказу <b>{code}</b>. "
+                        "Наш специалист свяжется с вами по телефону."},
+    "return_ask": {"uz": "↩️ <b>{code}</b> buyurtmasini qaytarish.\n\nQaytarish sababini batafsil yozing "
+                         "(nuqson, mos kelmadi, boshqa mahsulot keldi...).",
+                   "ru": "↩️ Возврат заказа <b>{code}</b>.\n\nПодробно опишите причину возврата "
+                         "(брак, не подошёл, пришёл другой товар...)."},
+    "ticket_short": {"uz": "Iltimos, batafsilroq yozing (kamida 10 belgi).",
+                     "ru": "Пожалуйста, опишите подробнее (минимум 10 символов)."},
+    "ticket_photos": {"uz": "📷 Mahsulot rasmlarini yuboring (5 tagacha). Tayyor bo'lsa «✅ Yuborish» ni bosing.",
+                      "ru": "📷 Отправьте фото товара (до 5). Когда готово — нажмите «✅ Отправить»."},
+    "ticket_photos_issue": {"uz": "📷 Kerak bo'lsa rasm yuboring (5 tagacha) yoki darhol «✅ Yuborish» ni bosing.",
+                            "ru": "📷 При необходимости отправьте фото (до 5) или сразу нажмите «✅ Отправить»."},
+    "ticket_photo_ok": {"uz": "📷 {n} ta rasm qabul qilindi.", "ru": "📷 Получено фото: {n}."},
+    "ticket_send_btn": {"uz": "✅ Yuborish", "ru": "✅ Отправить"},
+    "ticket_need_photo": {"uz": "Qaytarish uchun kamida bitta rasm yuboring.",
+                          "ru": "Для возврата отправьте хотя бы одно фото."},
+    "ticket_sent": {"uz": "✅ Murojaatingiz qabul qilindi (№{id}). Mutaxassisimiz tez orada telefon orqali bog'lanadi.",
+                    "ru": "✅ Обращение принято (№{id}). Специалист скоро свяжется с вами по телефону."},
+    "ticket_exists": {"uz": "Bu buyurtma bo'yicha murojaatingiz ko'rib chiqilmoqda. Tez orada bog'lanamiz.",
+                      "ru": "Ваше обращение по этому заказу уже рассматривается. Скоро свяжемся."},
+    "return_not_allowed": {"uz": "Bu buyurtmani qaytarib bo'lmaydi (muddat tugagan yoki ariza allaqachon berilgan).",
+                           "ru": "Этот заказ нельзя вернуть (срок истёк или заявка уже подана)."},
+    "ticket_kind_return": {"uz": "Qaytarish", "ru": "Возврат"},
+    "ticket_kind_issue": {"uz": "Muammo xabari", "ru": "Сообщение о проблеме"},
+    "ticket_open": {"uz": "🕐 Ko'rib chiqilmoqda", "ru": "🕐 На рассмотрении"},
+    "ticket_approved": {"uz": "✅ Tasdiqlandi", "ru": "✅ Одобрено"},
+    "ticket_rejected": {"uz": "❌ Rad etildi", "ru": "❌ Отклонено"},
+    "ticket_resolved": {"uz": "✅ Hal qilindi", "ru": "✅ Решено"},
+    "return_approved": {"uz": "✅ <b>{code}</b> buyurtmasini qaytarish tasdiqlandi.{note}",
+                        "ru": "✅ Возврат заказа <b>{code}</b> одобрен.{note}"},
+    "return_rejected": {"uz": "❌ <b>{code}</b> buyurtmasini qaytarish rad etildi.{note}",
+                        "ru": "❌ Возврат заказа <b>{code}</b> отклонён.{note}"},
+    "issue_resolved": {"uz": "✅ <b>{code}</b> bo'yicha murojaatingiz hal qilindi.{note}",
+                       "ru": "✅ Ваше обращение по заказу <b>{code}</b> решено.{note}"},
+
     # ---------- bildirishnomalar ----------
     "sent_new": {"uz": "🧾 Buyurtmangiz <code>{code}</code> qabul qilindi!\n\n"
                        "Operator tez orada bog'lanadi. Holat o'zgarganda shu yerda xabar beramiz.",
@@ -280,6 +324,7 @@ T: dict[str, dict[str, str]] = {
     "s_delivered": {"uz": "🎉 Yetkazildi", "ru": "🎉 Доставлен"},
     "s_delivered_pickup": {"uz": "🎉 Topshirildi", "ru": "🎉 Выдан"},
     "s_cancelled": {"uz": "❌ Bekor qilindi", "ru": "❌ Отменён"},
+    "s_returned": {"uz": "↩️ Qaytarildi", "ru": "↩️ Возвращён"},
     "step_new": {"uz": "Buyurtma berildi", "ru": "Заказ оформлен"},
 
     # ---------- xatolar (OrderError) ----------
@@ -455,6 +500,27 @@ W: dict[str, dict[str, str]] = {
     "chatEmpty": {"uz": "Buyurtma bo'yicha savolingizni yozing — xodim shu yerda javob beradi.",
                   "ru": "Задайте вопрос по заказу — сотрудник ответит здесь."},
     "you": {"uz": "Siz", "ru": "Вы"},
+    "chatClosed": {"uz": "Buyurtma yakunlangan — chat yopildi", "ru": "Заказ завершён — чат закрыт"},
+    "issue": {"uz": "Muammo haqida xabar berish", "ru": "Сообщить о проблеме"},
+    "issueHint": {"uz": "Muammo yoki savolingizni yozing — mutaxassis telefon orqali bog'lanadi.",
+                  "ru": "Опишите проблему или вопрос — специалист свяжется по телефону."},
+    "returnOrder": {"uz": "Buyurtmani qaytarish", "ru": "Вернуть заказ"},
+    "returnUntil": {"uz": "{date} gacha qaytarish mumkin", "ru": "Вернуть можно до {date}"},
+    "returnHint": {"uz": "Sababini batafsil yozing va mahsulot rasmlarini yuklang.",
+                   "ru": "Подробно опишите причину и загрузите фото товара."},
+    "reasonPh": {"uz": "Nima bo'ldi? Batafsil yozing...", "ru": "Что случилось? Опишите подробно..."},
+    "addPhotos": {"uz": "Rasm qo'shish", "ru": "Добавить фото"},
+    "photoRequired": {"uz": "Kamida bitta rasm yuklang", "ru": "Загрузите хотя бы одно фото"},
+    "reasonShort": {"uz": "Batafsilroq yozing (kamida 10 belgi)", "ru": "Опишите подробнее (минимум 10 символов)"},
+    "send": {"uz": "Yuborish", "ru": "Отправить"},
+    "ticketSent": {"uz": "Murojaat qabul qilindi. Tez orada bog'lanamiz!", "ru": "Обращение принято. Скоро свяжемся!"},
+    "tickets": {"uz": "Murojaatlar", "ru": "Обращения"},
+    "ticketKind_return": {"uz": "Qaytarish", "ru": "Возврат"},
+    "ticketKind_issue": {"uz": "Muammo xabari", "ru": "Сообщение о проблеме"},
+    "ticketSt_open": {"uz": "Ko'rib chiqilmoqda", "ru": "На рассмотрении"},
+    "ticketSt_approved": {"uz": "Tasdiqlandi", "ru": "Одобрено"},
+    "ticketSt_rejected": {"uz": "Rad etildi", "ru": "Отклонено"},
+    "ticketSt_resolved": {"uz": "Hal qilindi", "ru": "Решено"},
     "rateTitle": {"uz": "Xaridni baholang", "ru": "Оцените покупку"},
     "ratePh": {"uz": "Izoh (ixtiyoriy)", "ru": "Комментарий (необязательно)"},
     "rateSend": {"uz": "Yuborish", "ru": "Отправить"},
@@ -532,6 +598,10 @@ def both(key: str) -> set[str]:
 def money_l(amount: int | float, lang: str = "uz") -> str:
     s = f"{int(amount):,}".replace(",", " ")
     return f"{s} сум" if norm_lang(lang) == "ru" else f"{s} so'm"
+
+
+def ticket_status(status: str, lang: str) -> str:
+    return t(f"ticket_{status}", lang)
 
 
 def status_text(status: str, order_type: str, lang: str) -> str:

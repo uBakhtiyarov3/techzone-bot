@@ -12,7 +12,10 @@ STATUS_LABELS = {
     "shipping": "🚚 Yo'lda",
     "delivered": "🎉 Yetkazildi",
     "cancelled": "❌ Bekor qilindi",
+    "returned": "↩️ Qaytarildi",
 }
+# Chat faqat shu holatlarda ochiq; yopilgan buyurtmada faqat "muammo haqida xabar berish" qoladi
+CLOSED_STATUSES = ("delivered", "cancelled", "returned")
 # Xodim bosadigan "keyingi qadam" tugmalari
 NEXT_STATUS = {
     "new": ("accepted", "✅ Qabul qilish"),

@@ -8,7 +8,7 @@ from aiogram import Bot
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 from aiohttp import web
 
-from . import admin_api, chat, db, inventory, products, regions
+from . import admin_api, chat, db, inventory, products, regions, tickets
 from .brand import public_brand
 from .catalog import category_name, norm_lang, product_card, product_full, variant_label, variant_price
 from .config import config
@@ -163,6 +163,12 @@ async def order_json(order: dict, lang: str = "uz") -> dict:
         "media": [{"status": m["status"], "path": m["path"], "caption": m["caption"], "at": m["at"]}
                   for m in await chat.get_media(order["id"]) if m["path"]],
         "unread": await chat.unread_count(order["id"], "customer"),
+        "chat_open": tickets.chat_open(order),
+        "can_return": await tickets.can_return(order),
+        "return_until": (until.strftime("%d.%m.%Y") if (until := await tickets.return_until(order)) else ""),
+        "has_open_ticket": bool(await tickets.open_ticket(order["id"])),
+        "tickets": [{"id": tk["id"], "kind": tk["kind"], "status": tk["status"], "note": tk["note"],
+                     "created_at": tk["created_at"]} for tk in await tickets.order_tickets(order["id"])],
     }
 
 
@@ -380,12 +386,56 @@ async def api_chat_send(request: web.Request) -> web.Response:
     order = await _own_order(request)
     if not order:
         return api_error(t("order_not_found", user_lang(request)), 404)
+    if not tickets.chat_open(order):
+        return api_error(t("chat_closed", user_lang(request)), 409)
     body = await _json_body(request) or {}
     text = str(body.get("text") or "").strip()[:2000]
     if not text:
         return api_error("Bo'sh xabar")
     await add_chat_and_relay(_bot(request), order, "customer", request["user"]["id"], text)
     return web.json_response({"ok": True, "messages": [_chat_json(m) for m in await chat.get_messages(order["id"])]})
+
+
+# ---------------- qaytarish / muammo xabari ----------------
+
+async def api_ticket(request: web.Request) -> web.Response:
+    """Murojaat: multipart (kind, reason, photo...). Qaytarishda kamida bitta rasm shart."""
+    lang = user_lang(request)
+    order = await _own_order(request)
+    if not order:
+        return api_error(t("order_not_found", lang), 404)
+    form, photos = {}, []
+    if not request.content_type.startswith("multipart/"):  # rasmsiz forma (urlencoded)
+        form = {k: str(v)[:4000] for k, v in (await request.post()).items()}
+    reader = await request.multipart() if request.content_type.startswith("multipart/") else None
+    while reader and (part := await reader.next()) is not None:
+        if part.name == "photo" and part.filename:
+            raw = await part.read(decode=False)
+            if len(photos) < tickets.MAX_PHOTOS and len(raw) <= admin_api.MAX_UPLOAD:
+                try:
+                    photos.append((await admin_api.save_upload(raw, "photo"))[0])
+                except Exception:  # noqa: BLE001
+                    return api_error("Rasmni o'qib bo'lmadi")
+        else:
+            form[part.name] = (await part.read(decode=True)).decode()[:4000]
+    kind = form.get("kind") if form.get("kind") in tickets.KINDS else "issue"
+    reason = form.get("reason", "").strip()
+    if len(reason) < 10:
+        return api_error(t("ticket_short", lang))
+    if await tickets.open_ticket(order["id"]):
+        return api_error(t("ticket_exists", lang), 409)
+    if kind == "return":
+        if not await tickets.can_return(order):
+            return api_error(t("return_not_allowed", lang), 409)
+        if not photos:
+            return api_error(t("ticket_need_photo", lang))
+    tid = await tickets.create(order, kind, reason, photos)
+    bot = _bot(request)
+    if bot:
+        from .notify import notify_ticket_new
+
+        asyncio.create_task(notify_ticket_new(bot, tid))
+    return web.json_response({"ok": True, "id": tid, "order": await order_json(order, lang)})
 
 
 # ---------------- static ----------------
@@ -460,6 +510,7 @@ def create_app(bot: Bot | None) -> web.Application:
     r.add_post("/api/orders/{code}/review", api_review)
     r.add_get("/api/orders/{code}/chat", api_chat)
     r.add_post("/api/orders/{code}/chat", api_chat_send)
+    r.add_post("/api/orders/{code}/tickets", api_ticket)
     r.add_get("/admin", admin_redirect)
     r.add_get("/admin/", admin_file("index.html"))
     r.add_get("/admin/admin.js", admin_file("admin.js"))

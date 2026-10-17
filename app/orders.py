@@ -261,3 +261,32 @@ async def cancel_order(order: dict, by_user: int | None, reason: str) -> list[in
             return []
         await db.set_order_status(order["id"], "cancelled", by_user, reason[:200])
         return await inventory.release(order["id"], order["code"], by_user)
+
+
+async def decide_ticket(ticket: dict, action: str, by_user: int | None, note: str = "",
+                        restock: bool = True) -> list[int]:
+    """Murojaat bo'yicha qaror. approve/reject — qaytarish, resolve — muammo xabari.
+
+    Qaytarish tasdiqlansa buyurtma "qaytarildi" bo'ladi va (restock=True) mahsulot omborga qaytadi.
+    Qayta sotuvga chiqqan variantlar ro'yxatini qaytaradi.
+    """
+    from . import tickets
+
+    if ticket["status"] != "open":
+        raise ValueError("Murojaat allaqachon ko'rib chiqilgan")
+    if ticket["kind"] == "return" and action in ("approve", "reject"):
+        if action == "reject":
+            await tickets.set_status(ticket["id"], "rejected", by_user, note)
+            return []
+        order = await db.get_order(ticket["order_id"])
+        restocked: list[int] = []
+        async with inventory.STOCK_LOCK:
+            await db.set_order_status(order["id"], "returned", by_user, note or "Qaytarish tasdiqlandi")
+            if restock:
+                restocked = await inventory.release(order["id"], order["code"], by_user, "return")
+        await tickets.set_status(ticket["id"], "approved", by_user, note)
+        return restocked
+    if ticket["kind"] == "issue" and action == "resolve":
+        await tickets.set_status(ticket["id"], "resolved", by_user, note)
+        return []
+    raise ValueError("Bu murojaat uchun amal noto'g'ri")

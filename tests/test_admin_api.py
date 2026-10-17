@@ -161,6 +161,13 @@ async def test_order_management(client):
     orders = (await (await client.get("/api/admin/orders?status=new", headers=hdr)).json())["orders"]
     assert orders[0]["code"] == code and orders[0]["units"] == 2
 
+    # chat faqat faol buyurtmada
+    await chat.add_message(oid, "customer", 40, "Rahmat!")
+    r = await client.post(f"/api/admin/orders/{oid}/chat", headers=hdr, json={"text": "Marhamat!"})
+    d = await r.json()
+    assert [m["sender"] for m in d["chat"]] == ["customer", "staff"] and d["chat_open"]
+    assert await chat.unread_count(oid, "staff") == 0
+
     for st in ("accepted", "packing", "shipping", "delivered"):
         r = await client.post(f"/api/admin/orders/{oid}/status", headers=hdr, json={"status": st})
         assert (await r.json())["order"]["status"] == st
@@ -171,12 +178,7 @@ async def test_order_management(client):
     r = await client.post(f"/api/admin/orders/{oid}/serials", headers=hdr, json={"serials": {str(items[0]["id"]): "SN-123"}})
     assert (await r.json())["items"][0]["serial"] == "SN-123"
 
-    # chat va holat rasmi
-    await chat.add_message(oid, "customer", 40, "Rahmat!")
-    r = await client.post(f"/api/admin/orders/{oid}/chat", headers=hdr, json={"text": "Marhamat!"})
-    d = await r.json()
-    assert [m["sender"] for m in d["chat"]] == ["customer", "staff"]
-    assert await chat.unread_count(oid, "staff") == 0
+    # holat rasmi (yopilgan buyurtmada ham — masalan, topshirish dalolatnomasi)
     form = FormData()
     form.add_field("file", png(), filename="box.png", content_type="image/png")
     form.add_field("caption", "Qadoqlangan")

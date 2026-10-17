@@ -32,6 +32,7 @@ GROUPS: list[tuple[str, list[str]]] = [
         "repeat_added", "repeat_none", "your_rating", "rate_btn", "warranty_card", "warranty_until", "media_btn",
     ]),
     ("💬 Buyurtma chati", ["chat_"]),
+    ("↩️ Qaytarish va muammo xabari", ["issue_", "return_", "ticket_"]),
     ("🔔 Holat o'zgarishi xabarlari", ["sent_new", "track_btn", "st_", "status_photo"]),
     ("⭐ Baholash", ["rate_ask", "rate_thanks", "review_saved", "already_rated", "rate_not_ready"]),
     ("🏷 Holat nomlari", ["s_", "step_new"]),
@@ -51,14 +52,15 @@ PLAIN_KEYS = {
     "track_btn", "already_rated", "rate_not_ready", "lang_saved", "step_new", "location_label", "fav_add_btn",
     "fav_del_btn", "fav_added", "fav_removed", "alert_btn", "alert_on", "view_btn", "media_btn", "chat_btn",
     "chat_btn_unread", "chat_reply_btn", "chat_end_btn", "chat_you", "chat_empty", "in_stock", "low_stock",
-    "out_of_stock", "region_line", "eta_line", "map_btn",
+    "out_of_stock", "region_line", "eta_line", "map_btn", "issue_btn", "return_btn", "ticket_send_btn",
+    "ticket_kind_return", "ticket_kind_issue", "ticket_open", "ticket_approved", "ticket_rejected", "ticket_resolved",
     "promo_percent", "promo_fixed", "promo_free_delivery", "pay_card_alert", "items_sum", "delivery", "free",
     "discount", "total", "payment", "phone_soon", "pickup_shop",
 }
 # Telegram callback alert (answerCallbackQuery) — 200 belgigacha
 ALERT_KEYS = {"pay_card_alert", "form_stale", "already_rated", "rate_not_ready", "order_not_found",
               "cancel_not_allowed", "unavailable", "qty_limit", "added_toast", "lang_saved", "fav_added",
-              "fav_removed", "alert_on"}
+              "fav_removed", "alert_on", "chat_closed", "ticket_exists", "return_not_allowed"}
 ALLOWED_TAGS = {"b", "strong", "i", "em", "u", "ins", "s", "strike", "del", "code", "pre", "a", "tg-spoiler",
                 "blockquote", "span", "tg-emoji"}
 

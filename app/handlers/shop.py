@@ -20,17 +20,17 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from .. import chat, db, inventory, products, regions, rich
+from .. import chat, db, inventory, products, regions, rich, tickets
 from ..catalog import (
     badge_labels, category_name, discount_active, option_value, product_desc, product_name, specs_public,
     variant_label, variant_price, warranty_text,
 )
 from ..filters import Btn
-from ..i18n import both, money_l, stars, status_text, t
+from ..i18n import both, money_l, stars, status_text, t, ticket_status
 from ..keyboards import ikb, main_kb, webapp_ready, webapp_url
 from ..notify import (
-    add_chat_and_relay, notify_new_order, notify_restocked, notify_review, refresh_staff_messages,
-    save_telegram_photo,
+    add_chat_and_relay, notify_new_order, notify_restocked, notify_review, notify_ticket_new,
+    refresh_staff_messages, save_telegram_photo,
 )
 from ..orders import OrderError, cancel_order, normalize_phone, place_order, public_settings, quote
 from ..rich import Rich
@@ -63,6 +63,11 @@ class OrderChat(StatesGroup):
 
 class ReviewComment(StatesGroup):
     text = State()
+
+
+class TicketForm(StatesGroup):
+    reason = State()
+    photos = State()
 
 
 # ====================== ko'rsatish yordamchilari ======================
@@ -928,8 +933,8 @@ async def order_detail_view(order: dict, lang: str) -> tuple[Rich, InlineKeyboar
     otype = order.get("order_type") or "delivery"
     view = Rich().h(_title(t("order_title", lang, code=order["code"])))
     view.p(f"🕒 {order['created_at'][:16]} · " + t("type_delivery" if otype == "delivery" else "type_pickup", lang))
-    if order["status"] == "cancelled":
-        view.quote(f"<b>{t('s_cancelled', lang)}</b>" + (
+    if order["status"] in ("cancelled", "returned"):
+        view.quote(f"<b>{t('s_' + order['status'], lang)}</b>" + (
             "\n" + t("reason", lang, reason=h(order["cancel_reason"])) if order["cancel_reason"] else ""))
     else:
         reached = STEPS.index(order["status"])
@@ -974,20 +979,30 @@ async def order_detail_view(order: dict, lang: str) -> tuple[Rich, InlineKeyboar
             view.h(_title(t("warranty_card", lang)), 3).table(warranty, header=[
                 "", "⏳", "IMEI / SN"], align=["left", "center", "left"])
 
+    own_tickets = await tickets.order_tickets(order["id"])
+    if own_tickets:
+        view.table([[t(f"ticket_kind_{tk['kind']}", lang), ticket_status(tk["status"], lang),
+                     h(tk["note"]) or "—"] for tk in own_tickets])
+
     review = await db.get_review(order["id"])
     if review:
         view.footer(t("your_rating", lang, stars=stars(review["rating"])))
 
     rows = []
-    if order["status"] not in ("delivered", "cancelled"):
-        rows.append([(t("refresh", lang), f"sh:o:{order['code']}")])
-    unread = await chat.unread_count(order["id"], "customer")
-    rows.append([(t("chat_btn_unread", lang, n=unread) if unread else t("chat_btn", lang), f"sh:ch:{order['code']}")])
+    code = order["code"]
+    if tickets.chat_open(order):
+        rows.append([(t("refresh", lang), f"sh:o:{code}")])
+        unread = await chat.unread_count(order["id"], "customer")
+        rows.append([(t("chat_btn_unread", lang, n=unread) if unread else t("chat_btn", lang), f"sh:ch:{code}")])
+    if await tickets.can_return(order):
+        until = await tickets.return_until(order)
+        rows.append([(t("return_btn", lang, date=until.strftime("%d.%m")), f"sh:rt:{code}")])
+    rows.append([(t("issue_btn", lang), f"sh:is:{code}")])
     if order["status"] == "new":
         rows.append([(t("cancel_order_btn", lang), f"sh:oc:{order['code']}")])
     if order["status"] == "delivered" and not review:
         rows.append([(f"{n}⭐", f"rv:{order['id']}:{n}") for n in range(1, 6)])
-    if order["status"] in ("delivered", "cancelled"):
+    if order["status"] in ("delivered", "cancelled", "returned"):
         rows.append([(t("repeat_btn", lang), f"sh:rp:{order['code']}")])
     rows.append([(t("back_orders", lang), "sh:orders")])
     return view, _kb(rows)
@@ -1020,7 +1035,7 @@ async def order_cb(call: CallbackQuery) -> None:
     if not order:
         return
     await show(call, *await order_detail_view(order, lang))
-    await call.answer(t("refreshed", lang) if order["status"] not in ("delivered", "cancelled") else None)
+    await call.answer(t("refreshed", lang) if tickets.chat_open(order) else None)
 
 
 @router.callback_query(F.data.startswith("sh:oc:"))
@@ -1065,6 +1080,9 @@ async def order_chat_start(call: CallbackQuery, state: FSMContext) -> None:
     order = await _own_order(call, lang)
     if not order:
         return
+    if not tickets.chat_open(order):
+        await call.answer(t("chat_closed", lang), show_alert=True)
+        return
     await chat.mark_seen(order["id"], "customer")
     await state.set_state(OrderChat.message)
     await state.update_data(chat_order=order["id"])
@@ -1092,6 +1110,9 @@ async def order_chat_send(message: Message, state: FSMContext, bot: Bot) -> None
     if not order or order["user_id"] != message.from_user.id:
         await _back_to_main(message, t("order_not_found", lang), message.from_user.id)
         return
+    if not tickets.chat_open(order):
+        await _back_to_main(message, t("chat_closed", lang), message.from_user.id)
+        return
     path, file_id = "", ""
     if message.photo:
         file_id = message.photo[-1].file_id
@@ -1099,6 +1120,89 @@ async def order_chat_send(message: Message, state: FSMContext, bot: Bot) -> None
     text = (message.text or message.caption or "").strip()
     await add_chat_and_relay(bot, order, "customer", message.from_user.id, text, path, file_id)
     await _back_to_main(message, t("chat_sent", lang), message.from_user.id)
+
+
+# ====================== qaytarish va muammo xabari ======================
+
+@router.callback_query(F.data.startswith(("sh:is:", "sh:rt:")))
+async def ticket_start(call: CallbackQuery, state: FSMContext) -> None:
+    lang = await lang_of(call.from_user.id)
+    order = await _own_order(call, lang)
+    if not order:
+        return
+    kind = "return" if call.data.startswith("sh:rt:") else "issue"
+    if await tickets.open_ticket(order["id"]):
+        await call.answer(t("ticket_exists", lang), show_alert=True)
+        return
+    if kind == "return" and not await tickets.can_return(order):
+        await call.answer(t("return_not_allowed", lang), show_alert=True)
+        return
+    await state.set_state(TicketForm.reason)
+    await state.update_data(ticket_order=order["id"], ticket_kind=kind, ticket_photos=[])
+    await call.answer()
+    await call.message.answer(t("return_ask" if kind == "return" else "issue_ask", lang, code=order["code"]),
+                              reply_markup=_reply_kb(_cancel_row(lang)))
+
+
+@router.message(StateFilter(TicketForm), Btn("co_cancel"))
+async def ticket_cancel(message: Message, state: FSMContext) -> None:
+    await state.clear()
+    await _back_to_main(message, t("main_menu", await lang_of(message.from_user.id)), message.from_user.id)
+
+
+@router.message(TicketForm.reason, F.text)
+async def ticket_reason(message: Message, state: FSMContext) -> None:
+    lang = await lang_of(message.from_user.id)
+    reason = message.text.strip()
+    if len(reason) < 10:
+        await message.answer(t("ticket_short", lang))
+        return
+    data = await state.get_data()
+    await state.update_data(ticket_reason=reason[:2000])
+    await state.set_state(TicketForm.photos)
+    key = "ticket_photos" if data["ticket_kind"] == "return" else "ticket_photos_issue"
+    await message.answer(t(key, lang), reply_markup=_reply_kb([KeyboardButton(text=t("ticket_send_btn", lang))],
+                                                             _cancel_row(lang)))
+
+
+@router.message(TicketForm.photos, F.photo)
+async def ticket_photo(message: Message, state: FSMContext, bot: Bot) -> None:
+    lang = await lang_of(message.from_user.id)
+    photos = (await state.get_data()).get("ticket_photos") or []
+    if len(photos) >= tickets.MAX_PHOTOS:
+        return
+    path = await save_telegram_photo(bot, message.photo[-1].file_id, "ticket")
+    if path:
+        photos.append(path)
+        await state.update_data(ticket_photos=photos)
+    if not message.media_group_id or len(photos) == 1:
+        await message.answer(t("ticket_photo_ok", lang, n=len(photos)))
+
+
+@router.message(TicketForm.photos, Btn("ticket_send_btn"))
+async def ticket_submit(message: Message, state: FSMContext, bot: Bot) -> None:
+    lang = await lang_of(message.from_user.id)
+    data = await state.get_data()
+    if data["ticket_kind"] == "return" and not data.get("ticket_photos"):
+        await message.answer(t("ticket_need_photo", lang))
+        return
+    await state.clear()
+    order = await db.get_order(data["ticket_order"])
+    if not order or order["user_id"] != message.from_user.id:
+        await _back_to_main(message, t("order_not_found", lang), message.from_user.id)
+        return
+    if await tickets.open_ticket(order["id"]) or (data["ticket_kind"] == "return" and not await tickets.can_return(order)):
+        await _back_to_main(message, t("ticket_exists", lang), message.from_user.id)
+        return
+    tid = await tickets.create(order, data["ticket_kind"], data["ticket_reason"], data.get("ticket_photos") or [])
+    await _back_to_main(message, t("ticket_sent", lang, id=tid), message.from_user.id)
+    await notify_ticket_new(bot, tid)
+
+
+@router.message(TicketForm.photos)
+async def ticket_photo_hint(message: Message) -> None:
+    lang = await lang_of(message.from_user.id)
+    await message.answer(t("ticket_photos", lang))
 
 
 # ====================== baholash ======================

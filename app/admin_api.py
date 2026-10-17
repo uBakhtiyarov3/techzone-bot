@@ -20,16 +20,17 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 from aiohttp import web
 
-from . import chat, db, hours, inventory, products, regions
+from . import chat, db, hours, inventory, products, regions, tickets
 from .backup import make_backup
 from .brand import BRAND_KEYS, HEX_RE, public_brand, shop_name
 from .catalog import BADGES, badges_of, discount_active, variant_label, variant_price
 from .config import config
 from .i18n import OVERRIDES
 from .notify import (
-    add_chat_and_relay, delete_order, notify_restocked, notify_status_change, send_status_photo,
+    add_chat_and_relay, delete_order, notify_restocked, notify_status_change, notify_ticket_decision,
+    refresh_staff_messages, send_status_photo,
 )
-from .orders import cancel_order, public_settings
+from .orders import cancel_order, decide_ticket, public_settings
 from .roles import get_role
 from .texts_admin import catalog, validate
 from .utils import (
@@ -169,6 +170,7 @@ async def dashboard(request: web.Request) -> web.Response:
         low_stock=(await inventory.stock_list(only_low=True))[:12],
         stock_value=await inventory.stock_value(),
         unread_chats=await chat.unread_orders_for_staff(),
+        open_tickets=await tickets.open_count(),
         status=public_settings(raw),
     )
 
@@ -761,6 +763,7 @@ async def _settings_payload() -> web.Response:
         "schedule": hours.load_schedule(raw),
         "min_order": int(raw.get("min_order") or 0),
         "low_stock": int(raw.get("low_stock") or 3),
+        "return_days": int(raw.get("return_days") or 0),
         "phone": raw.get("phone") or "",
         "shop_address": raw.get("shop_address") or "",
         "shop_map_url": raw.get("shop_map_url") or "",
@@ -797,7 +800,7 @@ async def settings_save(request: web.Request) -> web.Response:
                 raise ValueError(f"{d}: vaqt noto'g'ri")
             clean[d] = [f"{o[0]:02d}:{o[1]:02d}", f"{c[0] % 24:02d}:{c[1]:02d}"]
         updates["schedule"] = json.dumps(clean)
-    for key, lo, hi in (("min_order", 0, 100_000_000), ("low_stock", 0, 1000)):
+    for key, lo, hi in (("min_order", 0, 100_000_000), ("low_stock", 0, 1000), ("return_days", 0, 365)):
         if key in data:
             updates[key] = str(_int(data, key, lo, hi))
     for key, limit in (("phone", 40), ("shop_address", 200), ("shop_name", 40), ("shop_tagline", 80),
@@ -950,7 +953,7 @@ async def orders(request: web.Request) -> web.Response:
     if kind == "active":
         sql += f" AND o.status IN ({','.join('?' * len(ACTIVE_STATUSES))})"
         args += list(ACTIVE_STATUSES)
-    elif kind in ("delivered", "cancelled", "new", "accepted", "packing", "shipping"):
+    elif kind in ("delivered", "cancelled", "returned", "new", "accepted", "packing", "shipping"):
         sql += " AND o.status = ?"
         args.append(kind)
     if q:
@@ -969,7 +972,9 @@ async def _order_payload(order_id: int) -> dict:
         "log": await db.get_order_log(order_id),
         "review": await db.get_review(order_id),
         "chat": await chat.get_messages(order_id),
+        "chat_open": tickets.chat_open(order),
         "media": await chat.get_media(order_id),
+        "tickets": await tickets.order_tickets(order_id),
     }
 
 
@@ -1038,6 +1043,8 @@ async def order_chat_send(request: web.Request) -> web.Response:
         text, path = str(data.get("text") or "").strip()[:2000], ""
     if not text and not path:
         return err("Xabar bo'sh")
+    if not tickets.chat_open(order):
+        return err("Buyurtma yakunlangan — chat yopilgan. Mijoz bilan telefon orqali bog'laning.", 409)
     await add_chat_and_relay(_bot(request), order, "staff", request["admin_id"], text, path)
     return ok(**await _order_payload(order["id"]))
 
@@ -1057,6 +1064,32 @@ async def order_media_upload(request: web.Request) -> web.Response:
     media = next(m for m in await chat.get_media(order["id"]) if m["id"] == media_id)
     _bg(request, send_status_photo, order, media)
     return ok(**await _order_payload(order["id"]))
+
+
+@admin_only
+async def tickets_list(request: web.Request) -> web.Response:
+    return ok(tickets=await tickets.listing(request.query.get("status", "open")), open=await tickets.open_count())
+
+
+@admin_only
+async def ticket_decide(request: web.Request) -> web.Response:
+    ticket = await tickets.get(int(request.match_info["id"]))
+    if not ticket:
+        return err("Murojaat topilmadi", 404)
+    data = await _body(request)
+    action = data.get("action")
+    note = _str(data, "note", 500)
+    if action == "reject" and not note:
+        return err("Rad etish sababini yozing — u mijozga yuboriladi")
+    restocked = await decide_ticket(ticket, action, request["admin_id"], note, bool(data.get("restock", True)))
+    ticket = await tickets.get(ticket["id"])
+    bot = _bot(request)
+    if bot:
+        asyncio.create_task(notify_ticket_decision(bot, ticket))
+        if ticket["status"] == "approved":
+            asyncio.create_task(refresh_staff_messages(bot, ticket["order_id"]))
+            asyncio.create_task(notify_restocked(bot, restocked))
+    return ok(ticket=ticket)
 
 
 @admin_only
@@ -1355,6 +1388,8 @@ def setup(app: web.Application) -> None:
     r.add_post("/api/admin/orders/{id:\\d+}/media", order_media_upload)
     r.add_delete("/api/admin/orders/{id:\\d+}", order_delete)
     r.add_get("/api/admin/chats", chats)
+    r.add_get("/api/admin/tickets", tickets_list)
+    r.add_post("/api/admin/tickets/{id:\\d+}", ticket_decide)
     r.add_get("/api/admin/reviews", reviews)
     r.add_get("/api/admin/customers", customers)
     r.add_get("/api/admin/staff", staff)

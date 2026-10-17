@@ -21,6 +21,10 @@ yangi do'konga moslash yo'riqnomasi.
 | Holat rasmi | Xodim har bir holatda ixtiyoriy rasm yuborishi mumkin (masalan, yig'ilayotgan buyurtma). Mijozga bot va Mini App'da ko'rinadi |
 | Buyurtma chati | Har buyurtma ichida mijoz ↔ do'kon yozishmasi (bot va Mini App) |
 | Menejer paneli | To'laqonli onlayn do'kon paneli: sotuvlar, xaridlar (kirim), ombor, foyda, mijozlar, hisobotlar |
+| Bot xabarlari | Telegram **Rich Messages** (Bot API 10.x): sarlavha, jadval, slaydshou galereya, details, chek-list. Barcha oddiy xabarlar middleware orqali rich ga aylanadi; Telegram rad etsa — oddiy HTML |
+| Chat | Faqat faol buyurtmada. Yakunlangan / bekor qilingan / qaytarilgan buyurtmada chat yopiladi (flooddan himoya) |
+| Muammo xabari | Har bir buyurtma ostida «⚠️ Muammo haqida xabar berish»: matn + rasm (ixtiyoriy) → panelga murojaat, xodim telefon orqali bog'lanadi. Bir vaqtda bitta ochiq murojaat |
+| Qaytarish | Yetkazilgandan keyin `return_days` (admin sozlamasi, standart 14 kun) ichida «↩️ Qaytarish»: sabab + kamida 1 rasm. Panelda tasdiqlash (omborga qaytarib yoki nuqsonli — omborsiz) yoki sabab bilan rad etish. Tasdiqlansa buyurtma holati `returned` |
 
 ## Javob berilmagan savollar — qabul qilingan standartlar (admin paneldan o'zgaradi)
 

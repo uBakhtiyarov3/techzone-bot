@@ -4,14 +4,14 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from .. import chat, db
+from .. import chat, db, rich, tickets
 from ..keyboards import B, cancel_kb, ikb, order_staff_kb, staff_kb
 from ..notify import (
-    add_chat_and_relay, notify_restocked, notify_status_change, refresh_staff_messages, save_telegram_photo,
-    send_status_photo,
+    add_chat_and_relay, notify_restocked, notify_status_change, notify_ticket_decision, refresh_staff_messages,
+    save_telegram_photo, send_status_photo, ticket_staff_kb, ticket_view,
 )
 from ..order_card import send_order_card
-from ..orders import cancel_order
+from ..orders import cancel_order, decide_ticket
 from ..roles import IsStaff
 from ..utils import ACTIVE_STATUSES, h, item_title, money, next_status, now, status_label
 
@@ -32,6 +32,7 @@ class StaffInput(StatesGroup):
     photo = State()
     chat = State()
     serial = State()
+    reject_note = State()
 
 
 @router.message(StateFilter(None), F.text == B.STAFF)
@@ -193,6 +194,11 @@ async def photo_start(call: CallbackQuery, state: FSMContext) -> None:
 
 @router.callback_query(F.data.startswith("och:"))
 async def chat_start(call: CallbackQuery, state: FSMContext) -> None:
+    current = await db.get_order(int(call.data.split(":")[1]))
+    if current and not tickets.chat_open(current):
+        await call.answer("Buyurtma yakunlangan — chat yopilgan. Mijoz bilan telefon orqali bog'laning.",
+                          show_alert=True)
+        return
     order = await _start_input(call, state, StaffInput.chat, "💬 <b>{code}</b> — mijozga xabar yozing (matn yoki rasm):")
     if order:
         await chat.mark_seen(order["id"], "staff")
@@ -249,8 +255,8 @@ async def photo_wrong(message: Message) -> None:
 async def chat_send(message: Message, state: FSMContext, bot: Bot) -> None:
     order = await _state_order(state)
     await state.clear()
-    if not order:
-        await message.answer("Buyurtma topilmadi.", reply_markup=staff_kb())
+    if not order or not tickets.chat_open(order):
+        await message.answer("Buyurtma topilmadi yoki chat yopilgan.", reply_markup=staff_kb())
         return
     path, file_id = "", ""
     if message.photo:
@@ -275,3 +281,60 @@ async def serial_save(message: Message, state: FSMContext, bot: Bot) -> None:
     await refresh_staff_messages(bot, order["id"])
     await message.answer(f"✅ {min(len(items), len(values))} ta pozitsiyaga IMEI/seriya saqlandi.",
                          reply_markup=staff_kb())
+
+
+# ---------------- murojaatlar: qaytarish / muammo xabari ----------------
+
+async def _apply_ticket(bot: Bot, ticket: dict, action: str, by_user: int, note: str = "",
+                        restock: bool = True) -> dict:
+    restocked = await decide_ticket(ticket, action, by_user, note, restock)
+    ticket = await tickets.get(ticket["id"])
+    await notify_ticket_decision(bot, ticket)
+    if ticket["kind"] == "return" and ticket["status"] == "approved":
+        await refresh_staff_messages(bot, ticket["order_id"])
+        await notify_restocked(bot, restocked)
+    return ticket
+
+
+@router.callback_query(F.data.startswith("tk:"))
+async def ticket_action(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    _, action, tid = call.data.split(":")
+    ticket = await tickets.get(int(tid))
+    if not ticket:
+        await call.answer("Murojaat topilmadi", show_alert=True)
+        return
+    if ticket["status"] != "open":
+        await call.answer("Murojaat allaqachon ko'rib chiqilgan", show_alert=True)
+        await rich.edit(call.message, ticket_view(ticket), None)
+        return
+    if action == "no":
+        await state.set_state(StaffInput.reject_note)
+        await state.update_data(ticket_id=ticket["id"])
+        await call.answer()
+        await call.message.answer(f"❌ №{ticket['id']} — rad etish sababini yozing (mijozga yuboriladi):",
+                                  reply_markup=cancel_kb())
+        return
+    mapping = {"ok": ("approve", True), "okn": ("approve", False), "done": ("resolve", True)}
+    if action not in mapping:
+        await call.answer()
+        return
+    act, restock = mapping[action]
+    ticket = await _apply_ticket(bot, ticket, act, call.from_user.id, restock=restock)
+    await rich.edit(call.message, ticket_view(ticket), ticket_staff_kb(ticket))
+    await call.answer("Saqlandi, mijozga xabar yuborildi")
+
+
+@router.message(StaffInput.reject_note, F.text)
+async def ticket_reject_note(message: Message, state: FSMContext, bot: Bot) -> None:
+    if message.text == B.CANCEL:
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=staff_kb())
+        return
+    tid = (await state.get_data()).get("ticket_id")
+    await state.clear()
+    ticket = await tickets.get(tid or 0)
+    if not ticket or ticket["status"] != "open":
+        await message.answer("Murojaat topilmadi yoki allaqachon ko'rib chiqilgan.", reply_markup=staff_kb())
+        return
+    await _apply_ticket(bot, ticket, "reject", message.from_user.id, message.text.strip())
+    await message.answer(f"❌ №{ticket['id']} rad etildi, mijozga sabab bilan xabar yuborildi.", reply_markup=staff_kb())

@@ -220,6 +220,21 @@ CREATE TABLE IF NOT EXISTS order_chat (
     at TEXT NOT NULL
 );
 
+-- murojaatlar: buyurtmani qaytarish va "muammo haqida xabar berish"
+CREATE TABLE IF NOT EXISTS tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,                         -- return | issue
+    reason TEXT NOT NULL,
+    photos TEXT NOT NULL DEFAULT '[]',          -- JSON: ["uploads/..."]
+    status TEXT NOT NULL DEFAULT 'open',        -- open | approved | rejected | resolved
+    note TEXT NOT NULL DEFAULT '',              -- xodim izohi (mijozga ham yuboriladi)
+    handled_by INTEGER,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 -- bot ichidagi savat (Mini App savati brauzerda saqlanadi)
 CREATE TABLE IF NOT EXISTS cart_items (
     user_id INTEGER NOT NULL,
@@ -300,6 +315,7 @@ CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_items_order ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_chat_order ON order_chat(order_id);
 CREATE INDEX IF NOT EXISTS idx_moves_variant ON stock_moves(variant_id);
+CREATE INDEX IF NOT EXISTS idx_tickets_order ON tickets(order_id);
 """
 
 # Kelajakdagi yangi ustunlar shu yerga: (jadval, ustun, ta'rif) — eski bazalar ham buzilmasdan yangilanadi
@@ -331,6 +347,7 @@ DEFAULT_SETTINGS = {
     "min_order": "0",
     "low_stock": "3",               # shu sondan kam qolsa "oz qoldi" va menejerga ogohlantirish
     "card_enabled": "0",            # Click/Payme ulanganda yoqiladi
+    "return_days": "14",            # yetkazilgandan keyin necha kun ichida qaytarish mumkin (0 — o'chirilgan)
 }
 
 
@@ -746,7 +763,8 @@ async def get_order_messages(order_id: int) -> list[dict]:
 async def delete_order(order_id: int) -> list[dict]:
     """Buyurtmani butunlay o'chiradi (faqat menejer). Xodimlardagi xabarlar ro'yxatini qaytaradi."""
     messages = await get_order_messages(order_id)
-    for table in ("order_items", "order_status_log", "order_messages", "reviews", "order_media", "order_chat"):
+    for table in ("order_items", "order_status_log", "order_messages", "reviews", "order_media", "order_chat",
+                  "tickets"):
         await db().execute(f"DELETE FROM {table} WHERE order_id = ?", (order_id,))
     await db().execute("DELETE FROM orders WHERE id = ?", (order_id,))
     await db().commit()

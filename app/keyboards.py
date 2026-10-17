@@ -80,8 +80,7 @@ def lang_kb() -> InlineKeyboardMarkup:
 
 
 def order_track_kb(code: str, lang: str = "uz") -> InlineKeyboardMarkup:
-    rows = [[InlineKeyboardButton(text=t("track_btn", lang), callback_data=f"sh:o:{code}"),
-             InlineKeyboardButton(text=t("chat_btn", lang), callback_data=f"sh:ch:{code}")]]
+    rows = [[InlineKeyboardButton(text=t("track_btn", lang), callback_data=f"sh:o:{code}")]]
     if webapp_ready():
         rows.append([InlineKeyboardButton(text=t("mini_inline", lang), web_app=WebAppInfo(url=webapp_url(f"o{code}")))])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -141,7 +140,8 @@ def order_staff_kb(order: dict) -> InlineKeyboardMarkup | None:
     if step:
         nxt, label = step
         rows.append([(label, f"ost:{oid}:{nxt}")])
-    rows.append([("📸 Rasm", f"oph:{oid}"), ("💬 Mijozga yozish", f"och:{oid}")])
+    if step:  # yopilgan buyurtmada chat yo'q (flooddan himoya) — faqat IMEI
+        rows.append([("📸 Rasm", f"oph:{oid}"), ("💬 Mijozga yozish", f"och:{oid}")])
     if order["status"] in ("accepted", "packing", "shipping", "delivered"):
         rows.append([("🔢 IMEI / seriya", f"osn:{oid}")])
     if step:

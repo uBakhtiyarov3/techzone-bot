@@ -66,8 +66,8 @@ async def reserve(items: list[dict], ref: str, by_user: int | None) -> None:
         raise
 
 
-async def release(order_id: int, ref: str, by_user: int | None) -> list[int]:
-    """Bekor qilingan buyurtma qoldig'ini qaytaradi. Qayta sotuvga chiqqan variantlar ro'yxati."""
+async def release(order_id: int, ref: str, by_user: int | None, reason: str = "cancel") -> list[int]:
+    """Bekor qilingan (yoki qaytarilgan) buyurtma qoldig'ini qaytaradi. Qayta sotuvga chiqqan variantlar."""
     restocked = []
     for it in await db.get_order_items(order_id):
         if not it["variant_id"]:
@@ -76,7 +76,7 @@ async def release(order_id: int, ref: str, by_user: int | None) -> list[int]:
         if before is None:
             continue
         await db.db().execute("UPDATE variants SET stock = stock + ? WHERE id = ?", (it["qty"], it["variant_id"]))
-        await _move(it["variant_id"], it["qty"], "cancel", ref, by_user=by_user)
+        await _move(it["variant_id"], it["qty"], reason, ref, by_user=by_user)
         if before <= 0:
             restocked.append(it["variant_id"])
     await db.db().commit()

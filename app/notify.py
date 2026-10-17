@@ -377,3 +377,64 @@ async def broadcast(bot: Bot, from_chat_id: int, message_ids: list[int], mode: s
         if progress_cb and i % 50 == 0:
             await progress_cb(i, len(user_ids))
     return ok, fail
+
+
+# ---------------- murojaatlar (qaytarish / muammo xabari) ----------------
+
+def ticket_staff_kb(ticket: dict) -> InlineKeyboardMarkup | None:
+    if ticket["status"] != "open":
+        return None
+    tid = ticket["id"]
+    if ticket["kind"] == "return":
+        rows = [[InlineKeyboardButton(text="✅ Qaytarish (omborga)", callback_data=f"tk:ok:{tid}")],
+                [InlineKeyboardButton(text="✅ Qaytarish (nuqsonli, omborsiz)", callback_data=f"tk:okn:{tid}")],
+                [InlineKeyboardButton(text="❌ Rad etish", callback_data=f"tk:no:{tid}")]]
+    else:
+        rows = [[InlineKeyboardButton(text="✅ Hal qilindi", callback_data=f"tk:done:{tid}")]]
+    rows.append([InlineKeyboardButton(text="🧾 Buyurtma", callback_data=f"ov:{ticket['order_id']}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def ticket_view(ticket: dict) -> Rich:
+    from .utils import phone_fmt
+
+    kind = "↩️ QAYTARISH ARIZASI" if ticket["kind"] == "return" else "⚠️ MUAMMO XABARI"
+    view = Rich().h(f"{kind} · №{ticket['id']}", 3)
+    view.table([["🧾 Buyurtma", f"<code>{ticket['code']}</code> · {money(ticket['total'])}"],
+                ["👤 Mijoz", h(ticket["customer_name"])],
+                ["📞 Telefon", h(phone_fmt(ticket["phone"]))],
+                ["🕒 Vaqt", ticket["created_at"][:16]]], striped=False)
+    view.quote(h(ticket["reason"]))
+    view.gallery(ticket["photos"])
+    if ticket["status"] != "open":
+        view.footer(f"Holat: {ticket['status']}" + (f" · {h(ticket['note'])}" if ticket.get("note") else ""))
+    else:
+        view.footer("Mijoz bilan telefon orqali bog'laning, so'ng qaror qabul qiling.")
+    return view
+
+
+async def notify_ticket_new(bot: Bot, ticket_id: int) -> None:
+    from . import tickets
+
+    ticket = await tickets.get(ticket_id)
+    if not ticket:
+        return
+    view, kb = ticket_view(ticket), ticket_staff_kb(ticket)
+    for chat_id in sorted(set(await manager_ids()) | set(await staff_recipients())):
+        try:
+            await rich.send(bot, chat_id, view, kb)
+        except SAFE:
+            pass
+
+
+async def notify_ticket_decision(bot: Bot, ticket: dict) -> None:
+    lang = await lang_of(ticket["user_id"])
+    note = "\n" + t("reason", lang, reason=h(ticket["note"])) if ticket.get("note") else ""
+    key = {"approved": "return_approved", "rejected": "return_rejected", "resolved": "issue_resolved"}.get(ticket["status"])
+    if not key:
+        return
+    try:
+        await bot.send_message(ticket["user_id"], t(key, lang, code=ticket["code"], note=note),
+                               reply_markup=order_track_kb(ticket["code"], lang))
+    except SAFE as e:
+        log.warning("Murojaat qarori yuborilmadi %s: %s", ticket["user_id"], e)
