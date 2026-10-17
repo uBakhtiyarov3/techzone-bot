@@ -1,204 +1,169 @@
-# 🚀 Yaproq go'sht botini bepul va doimiy ishga tushirish
+# 🚀 Tech.Zone botini serverga o'rnatish va hostingga chiqarish
 
-Bot **doim ishlab turishi** kerak: Telegram'dan yangi xabarlarni kutadi, xodimlarga buyurtma yuboradi, har kuni zaxira nusxa oladi. Shuning uchun unga **24/7 yoqilgan server** kerak. "Uxlab qoladigan" bepul xostinglar (Render, Koyeb free va h.k.) bu bot uchun mos emas.
+Bot **24/7 ishlab turishi** kerak: Telegramdan xabarlarni kutadi, xodimlarga buyurtma yuboradi, har kuni zaxira nusxa oladi.
+Shuning uchun unga doim yoqilgan server kerak ("uxlab qoladigan" bepul xostinglar mos emas).
 
-Bepul va doimiy ishlaydigan eng yaxshi variantlar — yirik bulut provayderlarining **"Always Free" virtual serverlari**:
+Ikki yo'l bor — o'rnatish skripti qaysi birida ekanini **o'zi aniqlaydi**:
 
-| Variant | Narx | Resurs | Eslatma |
-|---|---|---|---|
-| **Oracle Cloud Always Free** (tavsiya) | 0 so'm | Ampere A1: 2 OCPU / 12 GB RAMgacha (biz 1 OCPU / 6 GB olamiz) | Ro'yxatdan o'tishda karta tasdiqlanadi (pul yechilmaydi) |
-| **Google Cloud e2-micro** | 0 so'm | 2 vCPU (shared) / 1 GB RAM, 30 GB disk | Faqat us-west1, us-central1, us-east1 regionlarida bepul. Karta kerak |
-| Arzon VPS (zaxira variant) | ~$4–6/oy | 1–2 GB RAM | Karta/ro'yxatdan o'tish muammosi bo'lsa, eng ishonchli yo'l |
+| Holat | Rejim | Nima bo'ladi |
+|---|---|---|
+| **Yaproq go'sht ishlayotgan Google Cloud VM** (tavsiya, qo'shimcha xarajat yo'q) | `shared` | Tech.Zone alohida konteynerda, alohida token/baza/`.env` bilan ishlaydi. Mavjud Caddy ga faqat yangi domen bloki qo'shiladi. Yaproq go'sht kodi, bazasi, tokeni o'zgarmaydi. |
+| Yangi, bo'sh server | `alohida` | Bot + o'z Caddy si (80/443, avtomatik SSL). |
 
-Qaysi variantni tanlasangiz ham keyingi qadamlar bir xil: **Ubuntu server → domen → `install.sh` skripti**.
+> **Resurs:** e2-micro (1 GB RAM) ikki bot uchun yetarli — har bir bot ~100–150 MB ishlatadi, skript 2 GB swap ham qo'shadi.
+> Har bir konteynerga 400 MB limit qo'yilgan, shuning uchun biri ikkinchisini "bo'g'ib" qo'ymaydi.
 
 ---
 
 ## 1-qadam. Tayyorgarlik (5 daqiqa)
 
-1. **Yangi bot token oling.** Eski token chatda ochiq yuborilgan, shuning uchun @BotFather → `/mybots` → botingiz → *API Token* → **Revoke current token**. Yangi tokenni saqlab qo'ying.
-2. **Telegram ID ingiz:** `2076925033` (bosh menejer). Boshqa menejerlar keyin bot ichidan qo'shiladi.
+1. **Bot token:** @BotFather → `/newbot` → nom: `Tech.Zone`, username: masalan `techzone_uz_bot`. Tokenni hech kimga yubormang — u faqat serverdagi `.env` faylga yoziladi.
+2. **Bot ko'rinishi (BotFather'da):**
+   - `/setuserpic` → `webapp/brand/icon.png` (logo)
+   - `/setdescription` → "Smartfonlar, noutbuklar va aksessuarlar — rasmiy kafolat bilan. Buyurtma 24/7."
+   - `/setabouttext` → "Tech.Zone — smart choices, better tomorrow."
+   - Menyu tugmasi va buyruqlar ro'yxatini bot **o'zi** o'rnatadi.
+3. **Telegram ID ingiz** (bosh menejer): `2076925033`. Boshqa menejer va xodimlar keyin paneldan qo'shiladi.
 
-## 2-qadam. Bepul server ochish
+## 2-qadam. Domen (Mini App uchun HTTPS majburiy)
 
-### Variant A — Oracle Cloud (tavsiya)
+Telegram Mini App faqat `https://` manzilda ochiladi. SSL ni Caddy o'zi oladi — sizdan faqat domen kerak.
 
-1. https://signup.cloud.oracle.com → ro'yxatdan o'ting. **Home region** ni yaqinroq tanlang (masalan *Germany Central (Frankfurt)*) — keyin uni o'zgartirib bo'lmaydi.
-2. *Compute → Instances → Create instance*:
-   - **Image:** Canonical Ubuntu 24.04
-   - **Shape:** *Ampere* → `VM.Standard.A1.Flex`, **1 OCPU, 6 GB RAM** (Always Free chegarasida)
-   - **Networking:** "Assign a public IPv4 address" — yoqilgan
-   - **SSH keys:** "Generate a key pair" → **private key ni yuklab oling** (`.key` fayl)
-3. Instance yaratilgach **Public IP** ni yozib oling.
-4. Portlarni oching: instance sahifasi → *Subnet* → *Security List* → **Add Ingress Rules**:
-   - Source CIDR `0.0.0.0/0`, TCP, Destination port **80**
-   - Source CIDR `0.0.0.0/0`, TCP, Destination port **443**
+**a) Bepul DuckDNS (eng oson):** https://www.duckdns.org → Google bilan kiring → subdomen yarating: `techzone` →
+**current ip** ga VM ning tashqi IP sini yozing (Yaproq go'sht bilan **bir xil IP**) → sahifadagi **token** ni saqlang.
+Natija: `techzone.duckdns.org`.
 
-   (Server ichidagi firewall ni `install.sh` o'zi ochadi.)
+**b) O'z domeningiz bo'lsa** (masalan `techzone.uz`): DNS → **A** yozuv: `@` yoki `shop` → VM IP si.
 
-> ⚠️ Oracle uzoq vaqt deyarli yuklamasiz turgan Always Free serverlarni qaytarib olishi mumkin. Akkauntni **Pay As You Go** ga o'tkazsangiz (bepul limit ichida baribir 0 so'm) bu xavf yo'qoladi. Har holda bot har kuni zaxira nusxani sizga yuboradi.
+> Ikkala bot bitta IP da, lekin **har biri o'z domenida** ishlaydi — Caddy so'rovni domen nomiga qarab to'g'ri botga yo'naltiradi.
 
-> "Out of capacity" xatosi chiqsa — bir necha soatdan keyin qayta urinib ko'ring yoki boshqa *Availability Domain* ni tanlang.
+## 3-qadam. O'rnatish (bitta buyruq)
 
-### Variant B — Google Cloud e2-micro
-
-1. https://console.cloud.google.com → billing yoqing (karta tasdiqlash).
-2. *Compute Engine → VM instances → Create*:
-   - **Region:** `us-central1` (yoki us-west1 / us-east1 — **boshqasi pullik!**)
-   - **Machine type:** `e2-micro`
-   - **Boot disk:** Ubuntu 24.04, *Standard persistent disk*, 30 GB
-   - **Firewall:** ✅ Allow HTTP traffic, ✅ Allow HTTPS traffic
-3. *External IP* ni yozib oling. (Statik IP olmang — u pullik; IP o'zgarsa DuckDNS/domen yozuvini yangilaysiz.)
-
-## 3-qadam. Domen (Mini App uchun HTTPS majburiy)
-
-Telegram Mini App faqat `https://` manzilda ochiladi. SSL sertifikatni Caddy avtomatik oladi, sizdan faqat domen kerak.
-
-**a) O'z domeningiz bo'lsa (masalan webspace.uz dagi saytingiz domeni)** — eng yaxshisi:
-DirectAdmin → *DNS Management* → yangi **A** yozuv: nomi `bot`, qiymati — serveringiz Public IP si.
-Natija: `bot.sizningdomen.uz` → .env da `DOMAIN=bot.sizningdomen.uz`.
-
-**b) Domen bo'lmasa — bepul DuckDNS:**
-https://www.duckdns.org → Google/GitHub bilan kiring → subdomen yarating (masalan `yaproqgosht`) → IP ga server IP sini yozing → sahifadagi **token** ni saqlang.
-Natija: `yaproqgosht.duckdns.org`.
-
-**c) Umuman hech narsa qilmasangiz** — skript `IP.sslip.io` dan foydalanadi (test uchun yetarli).
-
-## 4-qadam. O'rnatish (bitta buyruq)
-
-Kompyuteringizdan serverga ulaning:
+Google Cloud konsol → *Compute Engine → VM instances* → Yaproq go'sht VM → **SSH** tugmasi. Ochilgan oynada:
 
 ```bash
-# Oracle (Ubuntu foydalanuvchisi "ubuntu"):
-ssh -i ~/Downloads/ssh-key.key ubuntu@SERVER_IP
-# Google Cloud: konsoldagi "SSH" tugmasini bosish kifoya
+curl -fsSL https://raw.githubusercontent.com/uBakhtiyarov3/techzone-bot/HEAD/deploy/get.sh | bash
 ```
 
-Serverda **bitta buyruq**:
+> Repo **private** bo'lsa `git clone` GitHub login va **Personal Access Token** so'raydi
+> (GitHub → Settings → Developer settings → Fine-grained tokens → faqat `techzone-bot` repo, *Contents: Read*).
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/uBakhtiyarov3/yaproqgosht/claude/zen-euler-bvolwi/deploy/get.sh | bash
-```
+Skript so'raydi:
 
-(U git o'rnatadi, loyihani yuklab oladi va `deploy/install.sh` ni ishga tushiradi.)
+| Savol | Javob |
+|---|---|
+| `BOT_TOKEN` | BotFather bergan token (yozilganda ko'rinmaydi) |
+| `ADMIN_IDS` | `2076925033` |
+| `DOMAIN` | `techzone.duckdns.org` |
+| `DUCKDNS_TOKEN` | DuckDNS sahifasidagi token |
+| Demo katalog | `Y` — sinab ko'rish uchun 16 ta namunaviy mahsulot (keyin paneldan bitta tugma bilan o'chadi) |
 
-Skript so'raydi: **BOT_TOKEN**, **ADMIN_IDS** (`2076925033`), **DOMAIN**, **DUCKDNS_TOKEN** (bo'lsa).
-Keyin o'zi: swap yaratadi, Docker o'rnatadi, portlarni ochadi, botni va HTTPS ni ishga tushiradi.
+Keyin o'zi:
+1. Serverda Yaproq go'sht Caddy si 443-portda ishlayotganini ko'radi → **shared rejim**;
+2. Tech.Zone ni `~/techzone-bot` papkasida alohida konteynerda ishga tushiradi;
+3. Yaproq go'sht `Caddyfile` iga `techzone.duckdns.org` blokini qo'shadi (oldin nusxasini `~/techzone-bot/data/Caddyfile.backup` ga oladi, xato bo'lsa qaytaradi) va Caddy ni **to'xtatmasdan** qayta yuklaydi;
+4. DuckDNS uchun faqat `techzone` subdomeni cron qatorini qo'shadi (Yaproq go'shtning DuckDNS qatoriga tegmaydi).
 
-> Repo private bo'lsa, `git clone` paytida GitHub login + **Personal Access Token** so'raladi (GitHub → Settings → Developer settings → Tokens).
+## 4-qadam. Tekshirish
 
-## 5-qadam. Tekshirish
-
-1. Brauzerda `https://DOMAIN/health` → `{"ok": true, ...}` chiqishi kerak.
-2. Botga `/start` → **👑 Menejer paneli** tugmasi chiqadi.
-3. **📋 Menyu** (bot ichida) va **🍔 Mini ilovada buyurtma** — ikkalasidan test buyurtma bering.
-4. Xodim qo'shing: *Menejer paneli → 👥 Xodimlar → ➕ Xodim qo'shish*.
-5. *⚙️ Sozlamalar* da telefon, ish vaqti, yetkazish narxini kiriting.
+1. Brauzerda `https://techzone.duckdns.org/health` → `{"ok": true, ...}`. (SSL 1–2 daqiqada olinadi.)
+2. Yaproq go'sht ham ishlayotganini tekshiring: uning domeni `/health`.
+3. Botga `/start` → logo bilan salomlashuv xabari, pastda **🛍 Do'kon** tugmasi (Mini App).
+4. **👑 Menejer paneli → 🖥 Do'kon paneli** → kelgan havola orqali brauzerda to'liq panel ochiladi (havola 15 daqiqa amal qiladi).
+5. Panelda birinchi navbatda:
+   - **⚙️ Do'kon va brend** — telefon, manzil, Google Maps havolasi, Instagram/kanal, qaytarish muddati (kun);
+   - **🗺 Yetkazish hududlari** — har viloyat narxi, muddati, "bepul yetkazish ... dan";
+   - **👥 Xodimlar** — buyurtmalarni qabul qiladigan xodimlar;
+   - **📱 Mahsulotlar** — o'z mahsulotlaringizni qo'shing, keyin *Demo mahsulotlarni o'chirish*.
+6. Test buyurtma bering (Mini App va bot ichidagi katalog orqali) → xodimga keladi → holatlarni o'tkazing (Qabul qilindi → Yig'ilmoqda → Yo'lda → Yetkazildi), har bosqichda ixtiyoriy rasm yuboring.
 
 ## Kundalik ishlatish
 
-| Vazifa | Buyruq (serverda, `yaproqgosht` papkasida) |
+Barcha buyruqlar serverda, `~/techzone-bot` papkasida (`cd ~/techzone-bot`):
+
+| Vazifa | Buyruq |
 |---|---|
-| Loglarni ko'rish | `sudo docker compose logs -f bot` |
-| Qayta ishga tushirish | `sudo docker compose restart bot` |
+| Loglar | `sudo docker compose logs -f shop` |
+| Qayta ishga tushirish | `sudo docker compose restart shop` |
 | Kodni yangilash | `bash deploy/update.sh` |
-| Admin panel | botda *👑 Menejer paneli → 🖥 Web panel* |
-| To'xtatish | `sudo docker compose down` |
+| To'xtatish | `sudo docker compose stop` |
+| Holat | `sudo docker compose ps` |
 
-- Server qayta yuklansa, bot **o'zi avtomatik ishga tushadi** (`restart: unless-stopped`).
-- **Zaxira nusxa:** har kuni soat 04:00 da bosh menejerga `.zip` fayl keladi. Qo'lda olish: *Menejer paneli → 💾 Zaxira nusxa*.
-- **Tiklash:** `sudo docker compose down` → zip ichidagi `data/` papkani loyiha papkasiga ko'chiring → `sudo docker compose up -d`.
+- Server qayta yuklansa bot **o'zi** ishga tushadi (`restart: unless-stopped`).
+- Konteyner xizmati nomi — `shop` (Yaproq go'shtniki `bot`; bir xil nom bo'lsa Caddy ularni adashtirib yuborardi).
+- Rejim `.env` dagi `COMPOSE_FILE` da saqlanadi — `docker compose` buyruqlari ikkala rejimda bir xil.
+- `.env` ni o'zgartirgandan keyin: `sudo docker compose up -d` (masalan yangi token, `ADMIN_IDS`).
+
+### Zaxira nusxa va tiklash
+
+- Har kuni soat **04:00** da bosh menejerga `techzone_backup_....zip` keladi (baza + yuklangan rasmlar).
+  Qo'lda: *Menejer paneli → 💾 Zaxira nusxa* yoki panel → *Hisobot va zaxira*.
+- **Tiklash:** `sudo docker compose stop` → zip ichidagi `data/` ni `~/techzone-bot/data/` ga ko'chiring → `sudo docker compose up -d`.
+
+### Token o'g'irlangan / almashtirish kerak bo'lsa
+
+@BotFather → `/mybots` → bot → *API Token* → **Revoke** → yangi tokenni `~/techzone-bot/.env` dagi `BOT_TOKEN=` ga yozing → `sudo docker compose up -d`.
 
 ---
 
-## 🌐 Mini App va admin panelni shared hostingga ko'chirish (nexiaacademy.uz/yaproqgosht/)
+## Yaproq go'sht bilan birga ishlash — nimalarni bilish kerak
 
-Bot, baza va rasmlar **Google Cloud serverda qoladi**. Hostingga faqat web fayllar (Mini App + admin panel) yuklanadi.
-Natijada mijoz Mini App'ni `https://nexiaacademy.uz/yaproqgosht/`, admin esa panelni `https://nexiaacademy.uz/yaproqgosht/admin/` dan ochadi.
+- **Ikkala bot mustaqil:** alohida papka, `.env`, baza (`data/`), token, konteyner. Birini yangilash/to'xtatish ikkinchisiga ta'sir qilmaydi.
+- **Yagona umumiy narsa — Yaproq go'sht Caddy si** (80/443 portlar). U to'xtasa Tech.Zone Mini App ham ochilmaydi (bot xabarlari esa ishlayveradi).
+- Yaproq go'sht `deploy/update.sh` ni odatdagidek ishlatavering. Caddyfile ga qo'shilgan blok `git pull` ga xalaqit bermasligi uchun `skip-worktree` qilib belgilangan.
+  Agar Yaproq go'shtning yangi versiyasida `deploy/Caddyfile` o'zgargan bo'lsa, `git pull` "local changes would be overwritten" deydi — u holda:
+  ```bash
+  cd ~/yaproqgosht
+  git update-index --no-skip-worktree deploy/Caddyfile && git checkout deploy/Caddyfile && git pull
+  cd ~/techzone-bot && bash deploy/install.sh   # blokni qayta qo'shadi
+  ```
+- Yaproq go'sht `docker compose down` qilinsa, uning tarmog'i ham o'chadi. Keyin `up` qilingach Tech.Zone ni qayta ulang:
+  `cd ~/techzone-bot && sudo docker compose up -d --force-recreate`.
 
-### 1. Serverda: kodni yangilash va zip tayyorlash (Google Cloud → SSH)
+### Qo'lda sozlash (skript Caddy ni topa olmasa)
+
+1. `~/techzone-bot/.env` ga qo'shing:
+   ```
+   COMPOSE_FILE=docker-compose.shared.yml
+   EDGE_NETWORK=yaproqgosht_default
+   PROXY_CONTAINER=yaproqgosht-caddy-1
+   APP_SLUG=techzone
+   ```
+   (Nomlarni `sudo docker ps` va `sudo docker network ls` dan tekshiring.)
+2. `sudo docker compose up -d --build`
+3. Yaproq go'sht `deploy/Caddyfile` oxiriga:
+   ```
+   techzone.duckdns.org {
+   	encode gzip
+   	reverse_proxy techzone-bot:8080
+   }
+   ```
+4. `sudo docker exec yaproqgosht-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adapter caddyfile`
+
+### Keyinroq alohida serverga ko'chirish
+
+Yangi serverda `get.sh` ni ishga tushiring (u `alohida` rejimni tanlaydi) → eski serverdan `~/techzone-bot/data/` ni ko'chiring →
+domen A-yozuvini yangi IP ga o'zgartiring → eski serverda `cd ~/techzone-bot && sudo docker compose down` va Yaproq go'sht Caddyfile idan Tech.Zone blokini o'chirib, Caddy ni reload qiling.
+
+---
+
+## (Ixtiyoriy) Mini App ni shared hostingda (cPanel) joylash
+
+Odatda kerak emas — server Mini App ni `https://DOMEN/`, panelni `https://DOMEN/admin` da o'zi beradi.
+Agar Mini App boshqa domenda (masalan `techzone.uz/shop/`) ochilishi kerak bo'lsa:
+
 ```bash
-cd ~/yaproqgosht
-bash deploy/update.sh                       # eng oxirgi kod
-grep -E "^(DOMAIN|WEBAPP_URL)=" .env        # server domeningizni ko'ring
-bash deploy/build_static.sh https://SERVER-DOMEN
-realpath dist/yaproqgosht-web.zip           # faylning to'liq yo'li
+cd ~/techzone-bot && bash deploy/build_static.sh https://techzone.duckdns.org techzone
 ```
-`SERVER-DOMEN` — `DOMAIN=` qatoridagi qiymat (masalan `yaproqgosht.duckdns.org`). **`nexiaacademy.uz` emas!**
+`dist/techzone-web.zip` ni hosting papkasiga yuklab Extract qiling, serverdagi `.env` ga
+`CORS_ORIGINS=https://techzone.uz` qo'shing va `sudo docker compose up -d`. BotFather'da Mini App manzilini va `.env` dagi `WEBAPP_URL` ni yangi manzilga o'zgartiring.
 
-Zip'ni kompyuterga olish: SSH oynasining yuqori o'ng burchagidagi **⚙️ (yoki «⬇ Download file»)** → oxirgi buyruq ko'rsatgan yo'lni qo'ying (masalan `/home/ism/yaproqgosht/dist/yaproqgosht-web.zip`) → **Download**.
+## Muammolar
 
-### 2. Hostingda SSL borligini tekshiring (DirectAdmin)
-Telegram faqat `https://` manzillarni ochadi.
-**Account Manager → SSL Certificates** → `nexiaacademy.uz` uchun Let's Encrypt yoqilgan bo'lsin (yo'q bo'lsa: *Get automatic certificate from ACME Provider* → `nexiaacademy.uz` va `www.nexiaacademy.uz` → **Save**). Brauzerda `https://nexiaacademy.uz` qulf belgisi bilan ochilishi kerak.
-
-### 3. Fayllarni yuklash (DirectAdmin → File Manager)
-1. **System Info & Files → File Manager**.
-2. `domains/nexiaacademy.uz/public_html` papkasiga kiring.
-3. **New Folder** → nomi `yaproqgosht` → ichiga kiring.
-4. **Upload** → `yaproqgosht-web.zip` ni tanlang → yuklanib bo'lgach orqaga qayting.
-5. Zip ustida o'ng tugma (yoki belgilab) → **Extract** → shu papkaning o'ziga oching. Keyin zip'ni o'chirib yuborsa bo'ladi.
-
-Papka ichida shular bo'lishi kerak (ichma-ich papka **bo'lmasin**):
-```
-public_html/yaproqgosht/
-├── index.html  app.js  style.css  config.js  .htaccess
-└── admin/  (index.html  admin.js  admin.css  .htaccess)
-```
-> Terminal orqali ham bo'ladi (zip `public_html/yaproqgosht/` ga yuklangan bo'lsa):
-> `cd ~/domains/nexiaacademy.uz/public_html/yaproqgosht && unzip -o yaproqgosht-web.zip && rm yaproqgosht-web.zip`
-
-### 4. Serverga yangi manzilni aytish (Google Cloud → SSH)
-```bash
-cd ~/yaproqgosht
-nano .env
-```
-Quyidagilarni o'zgartiring/qo'shing (`DOMAIN=` ga **tegmang**):
-```
-WEBAPP_URL=https://nexiaacademy.uz/yaproqgosht
-CORS_ORIGINS=https://nexiaacademy.uz,https://www.nexiaacademy.uz
-```
-Saqlash: `Ctrl+O` → `Enter` → `Ctrl+X`. Keyin:
-```bash
-sudo docker compose up -d --force-recreate bot
-sudo docker compose logs --tail 20 bot     # "WEBAPP_URL=https://nexiaacademy.uz/yaproqgosht" ko'rinsin
-```
-
-### 5. Tekshirish
-| Nima | Kutilgan natija |
+| Belgi | Sabab va yechim |
 |---|---|
-| `https://SERVER-DOMEN/health` | `{"ok": true, ...}` |
-| `https://nexiaacademy.uz/yaproqgosht/` (oddiy brauzerda) | «Ilovani Telegram orqali oching» — bu **normal** |
-| `https://nexiaacademy.uz/yaproqgosht/admin/` | Admin panel kirish oynasi |
-| Botda `/start` → **📋 Menyu** → «Mini ilovada ochish» | Menyu rasmlar bilan ochiladi |
-| *👑 Menejer paneli → 🖥 Web panel* | Havola `nexiaacademy.uz/yaproqgosht/admin/` ga olib kiradi |
-
-### Keyin nima qilinadi?
-- **Menyu, narx, rasm, matn, sozlamalar** — faqat admin panelda saqlang. Hostingga hech narsa yuklash kerak emas.
-- **Kod/dizayn yangilanganda** (men yangi funksiya qo'shsam): 1-qadam (zip) va 3-qadam (yuklash + Extract, ustidan yozish)ni takrorlang.
-
-### Muammo bo'lsa
-- **Mini App ochiladi, lekin menyu chiqmaydi / «Server bilan aloqa yo'q»** → `.env` dagi `CORS_ORIGINS` ni tekshiring (`https://` bilan, oxirida `/` siz) va 4-qadamdagi `--force-recreate` ni bajaring. `config.js` ichida server manzili to'g'ri ekanini tekshiring (File Manager → `config.js` → Edit).
-- **Eski ko'rinish chiqyapti** → Telegram'da Mini App'ni yopib qayta oching; File Manager'da `.htaccess` fayllar borligini tekshiring (yashirin fayllarni ko'rsatish yoqilgan bo'lsin).
-- **403 / 404** → fayllar `public_html/yaproqgosht/` ning **o'zida** ekanini tekshiring (`yaproqgosht/yaproqgosht/` emas).
-- **Admin panelga havola ishlamayapti** → havola 15 daqiqa va bir martalik; botdan yangisini oling.
-- Hostingdan voz kechsangiz: `.env` da `WEBAPP_URL=https://SERVER-DOMEN` qilib, `--force-recreate` — hammasi yana serverning o'zidan ishlaydi.
-
----
-
-## ❓ webspace.uz shared hosting (DirectAdmin) ga qo'ysa bo'ladimi?
-
-**Qisqa javob: botning o'zini qo'yish tavsiya etilmaydi, lekin domeningizni ishlatsa bo'ladi (yuqoridagi 3a-qadam).**
-
-Sabablari:
-- Shared hosting sayt (PHP/WordPress) uchun mo'ljallangan: so'rov kelganda ishlaydigan dasturlar uchun. Bizning bot esa **doim ishlab turadigan jarayon**. Shared hostingda bunday jarayonlar odatda ma'lum vaqtdan keyin o'chirib yuboriladi va qoidalar bo'yicha ham taqiqlangan bo'ladi.
-- Docker yo'q, root huquqi yo'q, ixtiyoriy port ochib bo'lmaydi.
-- Fondagi ishlar ham to'xtab qoladi: rassilka, xodimlarga bildirishnoma, kunlik zaxira nusxa.
-
-Tarifingizda **"Setup Python App"** va **SSH** bo'lsa ham, bot faqat webhook rejimida va ko'p cheklovlar bilan ishlaydi. Natijada vaqti-vaqti bilan xabarlar kechikadi yoki yo'qoladi — buyurtma boti uchun bu qabul qilinmaydi.
-
-**Eng to'g'ri sxema:**
-- 🌐 webspace.uz — kafe sayti va domen (`yaproqgosht.uz`);
-- 🤖 Bepul Oracle/Google serveri — bot + Mini App, `bot.yaproqgosht.uz` subdomeni orqali (DirectAdmin → DNS → A yozuv).
-
-Shunda domen ham o'zingizniki bo'ladi, bot ham barqaror va bepul ishlaydi.
+| `/health` ochilmaydi, SSL xatosi | Domen A-yozuvi VM IP siga qaramayapti yoki 1–2 daqiqa kuting. `sudo docker logs yaproqgosht-caddy-1 --tail 50` (shared) / `sudo docker compose logs caddy` (alohida). |
+| Bot javob bermayapti | `sudo docker compose logs --tail 100 shop`. "Unauthorized" — token xato. "Conflict: terminated by other getUpdates" — shu token bilan boshqa joyda ham bot ishlayapti. |
+| Mini App bo'sh oq ekran | `.env` da `WEBAPP_URL=https://...` to'g'rimi? O'zgartirgach `sudo docker compose up -d`. |
+| Panelga kira olmayapman | Havola 15 daqiqa amal qiladi — botdan yangisini oling. ID ingiz `ADMIN_IDS` da bo'lishi kerak. |
+| Xotira yetmayapti | `free -m` — swap bormi? `sudo docker stats` bilan ikkala botni kuzating. |

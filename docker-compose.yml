@@ -1,5 +1,7 @@
+# "Alohida" rejim: server faqat shu do'kon uchun — bot + o'z Caddy si (80/443, avtomatik SSL).
+# Serverda boshqa bot allaqachon 443-portda bo'lsa, docker-compose.shared.yml ishlatiladi (install.sh o'zi tanlaydi).
 services:
-  bot:
+  shop:
     build: .
     restart: unless-stopped
     env_file: .env
@@ -9,6 +11,7 @@ services:
       - ./data:/app/data            # baza, rasmlar — konteyner qayta qurilsa ham saqlanadi
     expose:
       - "8080"
+    mem_limit: 400m
     logging:
       driver: json-file
       options: { max-size: "10m", max-file: "3" }
@@ -25,7 +28,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - bot
+      - shop
 
 volumes:
   caddy_data:

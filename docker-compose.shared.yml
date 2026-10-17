@@ -1,0 +1,27 @@
+# "Shared" rejim: serverda allaqachon boshqa bot o'z Caddy si bilan ishlayapti (masalan Yaproq go'sht).
+# Bu faylda Caddy yo'q — bot o'sha Caddy ning docker tarmog'iga ulanadi, Caddy esa domenni shu yerga yo'naltiradi.
+# deploy/install.sh hammasini o'zi sozlaydi (.env da COMPOSE_FILE=docker-compose.shared.yml bo'ladi).
+services:
+  shop:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - PORT=8080
+    volumes:
+      - ./data:/app/data            # baza, rasmlar — konteyner qayta qurilsa ham saqlanadi
+    expose:
+      - "8080"
+    mem_limit: 400m
+    networks:
+      edge:
+        aliases:
+          - "${APP_SLUG:-techzone}-bot"
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "3" }
+
+networks:
+  edge:
+    external: true
+    name: "${EDGE_NETWORK:?EDGE_NETWORK .env faylida ko'rsatilmagan}"
