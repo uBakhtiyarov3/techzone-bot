@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="uz">
+<head>
+  <meta charset="utf-8">
+  <meta name="theme-color" content="#071a10">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>Yaproq go'sht</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css?v={{v}}">
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="config.js?v={{v}}"></script>
+</head>
+<body>
+  <div class="bg" aria-hidden="true"><i class="orb o1"></i><i class="orb o2"></i><i class="orb o3"></i></div>
+  <div id="app">
+    <!-- ===== MENYU ===== -->
+    <section class="view active" id="view-menu">
+      <header class="hero">
+        <div class="lang-switch" id="lang-switch">
+          <button data-lang="uz">UZ</button><button data-lang="ru">RU</button>
+        </div>
+        <div class="crown">♛</div>
+        <h1 class="logo">Yaproq go'sht</h1>
+        <p class="tagline">BURGER • COFFEE • GOOD MOOD</p>
+        <div class="closed-banner hidden" id="closed-banner"></div>
+      </header>
+      <div class="search">
+        <span class="search-ico">🔍</span>
+        <input id="search" type="search" autocomplete="off" data-i18n-ph="search">
+        <button class="search-clear hidden" id="search-clear" aria-label="clear">✕</button>
+      </div>
+      <nav class="cats" id="cats"></nav>
+      <div id="menu-list" class="menu-list">
+        <div class="skeleton"></div><div class="skeleton"></div><div class="skeleton"></div>
+      </div>
+      <footer class="perks">
+        <span data-i18n="perk1"></span><span data-i18n="perk2"></span><span data-i18n="perk3"></span>
+      </footer>
+    </section>
+
+    <!-- ===== SAVAT ===== -->
+    <section class="view" id="view-cart">
+      <div class="page-head"><h2 data-i18n="cart"></h2><button class="link-btn" id="clear-cart" data-i18n="clear"></button></div>
+      <div id="cart-list"></div>
+      <div id="cart-summary" class="summary"></div>
+      <button class="primary-btn hidden" id="to-checkout" data-i18n="checkout"></button>
+    </section>
+
+    <!-- ===== RASMIYLASHTIRISH ===== -->
+    <section class="view" id="view-checkout">
+      <div class="page-head"><h2 data-i18n="checkoutTitle"></h2></div>
+      <form id="checkout-form" novalidate>
+        <div class="segmented" id="type-seg">
+          <button type="button" data-type="delivery" data-i18n="delivery"></button>
+          <button type="button" data-type="pickup" data-i18n="pickup"></button>
+        </div>
+
+        <label class="field">
+          <span data-i18n="name"></span>
+          <input name="name" id="f-name" autocomplete="name" data-i18n-ph="namePh" maxlength="64" required>
+        </label>
+        <label class="field">
+          <span data-i18n="phone"></span>
+          <div class="phone-input">
+            <span class="prefix">+998</span>
+            <input name="phone" id="f-phone" type="tel" inputmode="numeric" autocomplete="tel-national" placeholder="90 123 45 67" maxlength="12" required>
+          </div>
+        </label>
+
+        <div id="delivery-block">
+          <label class="field">
+            <span data-i18n="address"></span>
+            <textarea name="address" id="f-address" rows="2" data-i18n-ph="addressPh" maxlength="300" required></textarea>
+          </label>
+          <button type="button" class="ghost-btn" id="geo-btn" data-i18n="geo"></button>
+        </div>
+        <div class="pickup-box hidden" id="pickup-block"></div>
+
+        <div class="field"><span data-i18n="when"></span></div>
+        <div class="segmented" id="time-seg">
+          <button type="button" data-time="asap" data-i18n="asap"></button>
+          <button type="button" data-time="later" data-i18n="later"></button>
+        </div>
+        <div id="slot-picker" class="slot-picker hidden">
+          <div class="chips" id="slot-days"></div>
+          <div class="chips times" id="slot-times"></div>
+        </div>
+
+        <label class="field">
+          <span data-i18n="comment"></span>
+          <textarea name="comment" id="f-comment" rows="2" data-i18n-ph="commentPh" maxlength="300"></textarea>
+        </label>
+
+        <div class="field"><span data-i18n="promo"></span></div>
+        <div class="promo-row">
+          <input id="f-promo" autocomplete="off" autocapitalize="characters" data-i18n-ph="promoPh" maxlength="32">
+          <button type="button" class="promo-btn" id="promo-apply" data-i18n="apply"></button>
+        </div>
+        <p class="promo-msg hidden" id="promo-msg"></p>
+
+        <div class="field"><span data-i18n="payment"></span></div>
+        <div class="pay-options">
+          <label class="pay-option">
+            <input type="radio" name="payment" value="cash" checked>
+            <div class="pay-body"><b data-i18n="cash"></b><small data-i18n="cashSub"></small></div>
+          </label>
+          <label class="pay-option disabled" aria-disabled="true">
+            <input type="radio" name="payment" value="card" disabled>
+            <div class="pay-body"><b data-i18n="card"></b><small>Click / Payme</small></div>
+            <span class="soon" data-i18n="soon"></span>
+          </label>
+        </div>
+
+        <div id="checkout-summary" class="summary"></div>
+        <p class="form-error hidden" id="form-error"></p>
+        <button type="submit" class="primary-btn" id="submit-btn" data-i18n="confirm"></button>
+      </form>
+    </section>
+
+    <!-- ===== MUVAFFAQIYAT ===== -->
+    <section class="view" id="view-success">
+      <div class="success">
+        <div class="success-icon">✓</div>
+        <h2 data-i18n="placed"></h2>
+        <p data-i18n="orderId"></p>
+        <div class="code-badge" id="success-code"></div>
+        <p class="muted" data-i18n="placedSub"></p>
+        <button class="primary-btn" id="track-btn" data-i18n="track"></button>
+        <button class="ghost-btn" data-go="menu" data-i18n="backToMenu"></button>
+      </div>
+    </section>
+
+    <!-- ===== BUYURTMALAR ===== -->
+    <section class="view" id="view-orders">
+      <div class="page-head"><h2 data-i18n="myOrders"></h2></div>
+      <div id="orders-list"></div>
+    </section>
+
+    <!-- ===== BUYURTMA TAFSILOTI ===== -->
+    <section class="view" id="view-order">
+      <div id="order-detail"></div>
+    </section>
+  </div>
+
+  <!-- Mahsulot oynasi -->
+  <div class="sheet-backdrop hidden" id="sheet-backdrop"></div>
+  <div class="sheet" id="sheet" aria-hidden="true"></div>
+
+  <!-- Pastki panel -->
+  <div class="cart-bar hidden" id="cart-bar">
+    <span id="cart-bar-count"></span>
+    <b id="cart-bar-total"></b>
+    <span class="cart-bar-go"><span data-i18n="cart"></span> <span aria-hidden="true">→</span></span>
+  </div>
+  <nav class="tabbar">
+    <button data-go="menu" class="active"><i>🍔</i><span data-i18n="tabMenu"></span></button>
+    <button data-go="cart"><i>🛒</i><span data-i18n="cart"></span><em class="badge hidden" id="cart-badge">0</em></button>
+    <button data-go="orders"><i>📦</i><span data-i18n="tabOrders"></span></button>
+  </nav>
+  <div class="toast hidden" id="toast"></div>
+
+  <script src="app.js?v={{v}}"></script>
+</body>
+</html>
