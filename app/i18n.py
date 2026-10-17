@@ -411,6 +411,7 @@ W: dict[str, dict[str, str]] = {
     "showAll": {"uz": "Hammasini ko'rsatish", "ru": "Показать все"},
     "addToCart": {"uz": "Savatga", "ru": "В корзину"},
     "inCart": {"uz": "Savatda", "ru": "В корзине"},
+    "goCart": {"uz": "Savatga o'tish", "ru": "Перейти в корзину"},
     "added": {"uz": "Savatga qo'shildi", "ru": "Добавлено в корзину"},
     "favAdded": {"uz": "Sevimlilarga qo'shildi", "ru": "Добавлено в избранное"},
     "favEmpty": {"uz": "Yoqqan mahsulotlarni ❤️ bilan saqlang", "ru": "Сохраняйте понравившиеся товары ❤️"},

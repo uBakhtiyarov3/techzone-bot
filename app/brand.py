@@ -8,7 +8,7 @@ import re
 # Tez-tez kerak bo'ladigan qiymat xotirada (i18n.t har chaqiruvda bazaga murojaat qilmasligi uchun)
 SHOP = {"name": "Tech.Zone"}
 
-BRAND_KEYS = ("shop_name", "shop_tagline", "shop_logo", "shop_mark", "brand_color", "order_prefix",
+BRAND_KEYS = ("shop_name", "shop_tagline", "shop_logo", "shop_mark", "shop_banner", "brand_color", "order_prefix",
               "about_uz", "about_ru", "instagram", "telegram_channel", "website")
 HEX_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 

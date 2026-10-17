@@ -958,7 +958,7 @@
   const DAYS = [["mon", "Dushanba"], ["tue", "Seshanba"], ["wed", "Chorshanba"], ["thu", "Payshanba"], ["fri", "Juma"], ["sat", "Shanba"], ["sun", "Yakshanba"]];
   PAGES.settings = async (root) => {
     const { settings: s, status } = await api("settings");
-    let logo = s.shop_logo, mark = s.shop_mark;
+    let logo = s.shop_logo, mark = s.shop_mark, banner = s.shop_banner;
     root.innerHTML = `
       <div class="card glass"><h3>🚦 Buyurtma qabul qilish</h3>
         <div class="tabs" id="mode-tabs"><button data-mode="auto">🕐 Qabul qilinadi (ish vaqti jadval bo'yicha)</button><button data-mode="open">🟢 Doim ochiq</button><button data-mode="closed">🔴 Vaqtincha to'xtatilgan</button></div>
@@ -971,6 +971,7 @@
           <div class="row"><div class="f"><span class="f-label">Asosiy rang</span><div class="color-row"><input type="color" id="b-color" value="${esc(s.brand_color)}"><input id="b-color-hex" value="${esc(s.brand_color)}" maxlength="7"></div></div>
             <div class="f"><span class="f-label">Logo (to'liq)</span><div id="b-logo-prev">${logo ? `<img class="logo-prev" src="${esc(imgUrl(logo))}">` : ""}</div><input type="file" id="b-logo" accept="image/*" style="margin-top:6px"></div></div>
           <div class="f"><span class="f-label">Belgi (kichik logo / ikonka)</span><div id="b-mark-prev">${mark ? `<img class="logo-prev" src="${esc(imgUrl(mark))}">` : ""}</div><input type="file" id="b-mark" accept="image/*" style="margin-top:6px"></div>
+          <div class="f"><span class="f-label">Salomlashuv banneri (/start, 2:1, to'q fon)</span><div id="b-banner-prev">${banner ? `<img class="logo-prev" src="${esc(imgUrl(banner))}">` : ""}</div><input type="file" id="b-banner" accept="image/*" style="margin-top:6px"></div>
           <label class="f"><span>Do'kon haqida (uz)</span><textarea id="b-about-uz" rows="2" maxlength="600">${esc(s.about_uz)}</textarea></label>
           <label class="f"><span>Do'kon haqida (ru)</span><textarea id="b-about-ru" rows="2" maxlength="600">${esc(s.about_ru)}</textarea></label>
           <div class="row"><label class="f"><span>Instagram</span><input id="b-ig" value="${esc(s.instagram)}" placeholder="@techzone"></label>
@@ -1012,6 +1013,7 @@
     });
     up("#b-logo", "#b-logo-prev", "logo", (p) => (logo = p));
     up("#b-mark", "#b-mark-prev", "brand", (p) => (mark = p));
+    up("#b-banner", "#b-banner-prev", "photo", (p) => (banner = p));
     $$(".sched-row [data-off]", root).forEach((c) => (c.onchange = () => c.closest(".sched-row").classList.toggle("closed", c.checked)));
     $("#sch-copy", root).onclick = () => {
       const first = $(".sched-row", root);
@@ -1027,7 +1029,7 @@
       const v = (id) => $(id, root).value;
       const body = {
         schedule, shop_name: v("#b-name"), order_prefix: v("#b-prefix"), shop_tagline: v("#b-tagline"), brand_color: v("#b-color-hex"),
-        shop_logo: logo, shop_mark: mark, about_uz: v("#b-about-uz"), about_ru: v("#b-about-ru"), instagram: v("#b-ig"),
+        shop_logo: logo, shop_mark: mark, shop_banner: banner, about_uz: v("#b-about-uz"), about_ru: v("#b-about-ru"), instagram: v("#b-ig"),
         telegram_channel: v("#b-tgc"), website: v("#b-web"), phone: v("#s-phone"), shop_address: v("#s-addr"),
         shop_map_url: v("#s-map").trim(), shop_lat: v("#s-lat").trim(), shop_lng: v("#s-lng").trim(),
         delivery_enabled: $("#s-deliv", root).checked, pickup_enabled: $("#s-pick", root).checked,

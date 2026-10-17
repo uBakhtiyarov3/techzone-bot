@@ -33,7 +33,7 @@ async def send_welcome(message: Message, user_id: int, first_name: str, is_new: 
     if not settings["accepting"]:
         greeting += t("closed_now", lang) + "\n\n"
     greeting += t("how_order", lang)
-    logo = await db.get_setting("shop_logo")
+    logo = await db.get_setting("shop_banner") or await db.get_setting("shop_logo")
     await rich.answer(message, Rich().img(logo).p(greeting), main_kb(role, lang))
 
     ways = t("ways_bot", lang)

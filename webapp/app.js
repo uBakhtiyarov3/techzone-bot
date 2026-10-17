@@ -178,23 +178,12 @@
     }
   }
 
-  // ---------------- Dock: macOS magnifikatsiyasi ----------------
+  // ---------------- Dock: faol bo'lim kattaroq ----------------
   function resetDock() {
     const btns = [...dock.querySelectorAll("button")];
     const ai = btns.findIndex((b) => b.classList.contains("active"));
     btns.forEach((b, i) => b.style.setProperty("--s", i === ai ? 1.28 : Math.abs(i - ai) === 1 && ai >= 0 ? 1.08 : 1));
   }
-  function magnify(x) {
-    dock.querySelectorAll("button").forEach((b) => {
-      const r = b.getBoundingClientRect();
-      const d = Math.abs(x - (r.left + r.width / 2));
-      b.style.setProperty("--s", (1 + 0.42 * Math.exp(-(d * d) / (2 * 46 * 46))).toFixed(3));
-    });
-  }
-  dock.addEventListener("pointermove", (e) => magnify(e.clientX));
-  dock.addEventListener("pointerdown", (e) => magnify(e.clientX));
-  dock.addEventListener("pointerleave", resetDock);
-  dock.addEventListener("pointercancel", resetDock);
   dock.addEventListener("click", (e) => {
     const b = e.target.closest("button[data-tab]");
     if (!b) return;
@@ -349,6 +338,7 @@
       v = findVariant(sel) || v;
       const images = imgsFor(sel);
       const out = !v || v.stock === "out";
+      const inCart = v && S.cart.find((x) => x.variant_id === v.id);
       const inCmp = S.compare.includes(p.id);
       view.innerHTML = `
         <div class="pd-top"><button class="icon-btn glass" data-act="back">${ico("back")}</button>
@@ -380,6 +370,8 @@
         <div class="buybar glass">
           ${out ? `<div class="total"><small>${T("outOfStock")}</small><b>${money(v ? v.price : p.price)}</b></div>
               <button class="btn btn-white" data-act="notify" ${alerts.includes(v && v.id) ? "disabled" : ""}>${ico("bell")}${T("notify")}</button>`
+            : inCart ? `<div class="qty glass"><button data-cq="-1">${ico("minus")}</button><span id="qn">${inCart.qty}</span><button data-cq="1">${ico("plus")}</button></div>
+              <button class="btn btn-primary two" data-act="gocart">${ico("cart")}<span><b>${T("goCart")}</b><small id="qt">${T("inCart")}: ${money(v.price * inCart.qty)}</small></span></button>`
             : `<div class="qty glass"><button data-q="-1">${ico("minus")}</button><span id="qn">${qty}</span><button data-q="1">${ico("plus")}</button></div>
               <button class="btn btn-primary two" data-act="buy">${ico("cart")}<span><b>${T("addToCart")}</b><small id="qt">${money(v.price * qty)}</small></span></button>`}</div>`;
       const gal = document.getElementById("gal");
@@ -403,7 +395,17 @@
         document.getElementById("qt").textContent = money(v.price * qty);
       }));
       const act = (name, fn) => { const el = view.querySelector(`[data-act="${name}"]`); el && el.addEventListener("click", fn); };
-      act("buy", () => addToCart(v.id, qty, v.left || 20));
+      act("buy", () => { if (addToCart(v.id, qty, v.left || 20)) draw(); });
+      act("gocart", () => { haptic("sel"); go("#cart"); });
+      view.querySelectorAll("[data-cq]").forEach((b) => b.addEventListener("click", () => {
+        const it = S.cart.find((x) => x.variant_id === v.id);
+        if (!it) return draw();
+        const max = Math.min(v.left || 20, 20);
+        const n = it.qty + +b.dataset.cq;
+        if (n > max) { toast(T("maxQty"), true); return; }
+        if (n <= 0) S.cart = S.cart.filter((x) => x !== it); else it.qty = n;
+        haptic("sel"); saveCart(); draw();
+      }));
       act("cmp", () => { toggleCompare(p.id) && draw(); });
       act("allspecs", (e) => { view.querySelectorAll("#specs .more").forEach((x) => x.classList.remove("hidden")); e.target.remove(); });
       act("notify", async () => {

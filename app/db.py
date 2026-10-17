@@ -327,6 +327,7 @@ DEFAULT_SETTINGS = {
     "shop_tagline": "Smart choices. Better tomorrow.",
     "shop_logo": "brand/logo.png",
     "shop_mark": "brand/mark.png",
+    "shop_banner": "brand/banner.jpg",   # /start dagi salomlashuv rasmi (2:1, to'q fon)
     "brand_color": "#E0382B",
     "order_prefix": "TZ",
     "about_uz": "Smartfonlar, noutbuklar, planshetlar, quloqchinlar va aksessuarlar — rasmiy kafolat bilan.",

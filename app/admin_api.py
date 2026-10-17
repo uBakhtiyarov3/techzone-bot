@@ -808,7 +808,7 @@ async def settings_save(request: web.Request) -> web.Response:
                        ("website", 200)):
         if key in data:
             updates[key] = _str(data, key, limit, key == "shop_name")
-    for key in ("shop_logo", "shop_mark"):
+    for key in ("shop_logo", "shop_mark", "shop_banner"):
         if key in data:
             updates[key] = _image(data[key])
     if "brand_color" in data:
