@@ -161,13 +161,13 @@ textarea { resize: vertical; }
 .vt input { padding: 7px 9px; }
 .vt .vname { white-space: nowrap; font-weight: 600; }
 .imgs { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 10px; }
-.img-tile { position: relative; border-radius: 14px; overflow: hidden; background: #f3f3f5; aspect-ratio: 4 / 3; }
+.img-tile { position: relative; border-radius: 14px; overflow: hidden; background: #f3f3f5; aspect-ratio: 3 / 4; }
 .img-tile img { width: 100%; height: 100%; object-fit: contain; }
 .img-tile .ops { position: absolute; inset: auto 0 0 0; display: flex; gap: 4px; padding: 6px; background: linear-gradient(transparent, rgba(0, 0, 0, .75)); }
 .img-tile .ops select { padding: 3px 4px; font-size: 11px; border-radius: 7px; background: rgba(0, 0, 0, .7); }
 .img-tile .ops button { padding: 2px 7px; border-radius: 7px; border: 0; background: rgba(0, 0, 0, .7); cursor: pointer; }
 .img-tile .main-tag { position: absolute; top: 6px; left: 6px; background: var(--brand); padding: 1px 7px; border-radius: 6px; font-size: 11px; font-weight: 700; }
-.drop { border: 1.5px dashed var(--line-2); border-radius: 14px; aspect-ratio: 4 / 3; display: grid; place-items: center; text-align: center; color: var(--muted); cursor: pointer; font-size: 12.5px; padding: 8px; }
+.drop { border: 1.5px dashed var(--line-2); border-radius: 14px; aspect-ratio: 3 / 4; display: grid; place-items: center; text-align: center; color: var(--muted); cursor: pointer; font-size: 12.5px; padding: 8px; }
 .drop.over { border-color: var(--brand); background: rgba(var(--brand-rgb), .08); }
 .spec-row { display: grid; grid-template-columns: 1fr 1.4fr 1.4fr auto; gap: 6px; margin-bottom: 6px; }
 

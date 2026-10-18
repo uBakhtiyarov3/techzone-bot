@@ -519,12 +519,12 @@ async def demo_delete(request: web.Request) -> web.Response:
 # ====================== rasm yuklash ======================
 
 MAX_UPLOAD = 10 * 1024 * 1024
-PRODUCT_W, PRODUCT_H = 1200, 900   # mahsulot rasmi: 4:3, oq fon (kesilmaydi)
+PRODUCT_W, PRODUCT_H = 900, 1200   # mahsulot rasmi: 3:4 (tik), oq fon (kesilmaydi)
 PHOTO_MAX = 1600                   # chek, chat va boshqa rasmlar: nisbati saqlanadi
 
 
 def process_image(raw: bytes, kind: str = "product") -> tuple[bytes, str, dict]:
-    """Rasmni tayyorlaydi. product — kesmasdan 4:3 ga joylaydi (oq fon), photo — nisbati saqlanadi,
+    """Rasmni tayyorlaydi. product — kesmasdan 3:4 ga joylaydi (oq fon), photo — nisbati saqlanadi,
     brand/logo — PNG shaffofligi bilan."""
     from PIL import Image, ImageOps
 
@@ -552,16 +552,16 @@ def process_image(raw: bytes, kind: str = "product") -> tuple[bytes, str, dict]:
         img.save(out, "JPEG", quality=86, optimize=True, progressive=True)
         return out.getvalue(), "jpg", {"width": img.width, "height": img.height, "original": [ow, oh],
                                        "warnings": warnings}
-    if abs(ow / oh - 4 / 3) > 0.03:
-        warnings.append(f"Rasm {ow}×{oh} — 4:3 emas. Kesilmadi, 4:3 ga oq fon bilan joylandi.")
+    if abs(ow / oh - 3 / 4) > 0.03:
+        warnings.append(f"Rasm {ow}×{oh} — 3:4 emas. Kesilmadi, 3:4 ga oq fon bilan joylandi.")
     w, h = img.size
-    cw, ch = (w, round(w * 3 / 4)) if w / h >= 4 / 3 else (round(h * 4 / 3), h)
+    cw, ch = (w, round(w * 4 / 3)) if w / h >= 3 / 4 else (round(h * 3 / 4), h)
     canvas = Image.new("RGB", (cw, ch), (255, 255, 255))
     canvas.paste(img, ((cw - w) // 2, (ch - h) // 2))
     if cw > PRODUCT_W:
         canvas = canvas.resize((PRODUCT_W, PRODUCT_H), Image.LANCZOS)
-    if ow < 800:
-        warnings.append(f"Rasm kichik ({ow}×{oh}). Sifatli ko'rinishi uchun kamida 1200×900 tavsiya qilinadi.")
+    if ow < 600:
+        warnings.append(f"Rasm kichik ({ow}×{oh}). Sifatli ko'rinishi uchun kamida 900×1200 tavsiya qilinadi.")
     out = io.BytesIO()
     canvas.save(out, "JPEG", quality=86, optimize=True, progressive=True)
     return out.getvalue(), "jpg", {"width": canvas.width, "height": canvas.height, "original": [ow, oh],

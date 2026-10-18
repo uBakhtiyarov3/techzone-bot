@@ -252,7 +252,7 @@ async def test_texts_and_upload(client):
     form.add_field("file", png(800, 400), filename="a.png", content_type="image/png")
     r = await client.post("/api/admin/upload", headers=hdr, data=form)
     d = await r.json()
-    assert (d["width"], d["height"]) == (800, 600) and d["path"].endswith(".jpg") and d["warnings"]
+    assert (d["width"], d["height"]) == (800, 1067) and d["path"].endswith(".jpg") and d["warnings"]
     form = FormData()
     form.add_field("file", png(600, 600, (0, 0, 0, 0)), filename="logo.png", content_type="image/png")
     form.add_field("kind", "brand")
