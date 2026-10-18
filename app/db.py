@@ -153,6 +153,11 @@ CREATE TABLE IF NOT EXISTS orders (
     address TEXT NOT NULL DEFAULT '',
     comment TEXT NOT NULL DEFAULT '',
     payment_method TEXT NOT NULL,
+    pay_status TEXT NOT NULL DEFAULT '',        -- karta: await | review | paid | rejected ('' — naqd)
+    pay_receipt TEXT NOT NULL DEFAULT '',       -- chek rasmi (uploads/...)
+    pay_note TEXT NOT NULL DEFAULT '',          -- rad etish sababi
+    pay_checked_by INTEGER,
+    pay_at TEXT,
     subtotal INTEGER NOT NULL,
     discount INTEGER NOT NULL DEFAULT 0,
     promo_code TEXT NOT NULL DEFAULT '',
@@ -319,7 +324,13 @@ CREATE INDEX IF NOT EXISTS idx_tickets_order ON tickets(order_id);
 """
 
 # Kelajakdagi yangi ustunlar shu yerga: (jadval, ustun, ta'rif) — eski bazalar ham buzilmasdan yangilanadi
-MIGRATIONS: list[tuple[str, str, str]] = []
+MIGRATIONS: list[tuple[str, str, str]] = [
+    ("orders", "pay_status", "TEXT NOT NULL DEFAULT ''"),
+    ("orders", "pay_receipt", "TEXT NOT NULL DEFAULT ''"),
+    ("orders", "pay_note", "TEXT NOT NULL DEFAULT ''"),
+    ("orders", "pay_checked_by", "INTEGER"),
+    ("orders", "pay_at", "TEXT"),
+]
 
 DEFAULT_SETTINGS = {
     # --- brend (white-label: boshqa do'kon uchun shu yerdan o'zgaradi) ---
@@ -347,7 +358,10 @@ DEFAULT_SETTINGS = {
     "pickup_enabled": "1",
     "min_order": "0",
     "low_stock": "3",               # shu sondan kam qolsa "oz qoldi" va menejerga ogohlantirish
-    "card_enabled": "0",            # Click/Payme ulanganda yoqiladi
+    "card_enabled": "0",            # 1 — kartaga o'tkazma + chek orqali to'lov
+    "card_number": "",
+    "card_holder": "",
+    "card_bank": "",
     "return_days": "14",            # yetkazilgandan keyin necha kun ichida qaytarish mumkin (0 — o'chirilgan)
 }
 
@@ -646,7 +660,7 @@ async def generate_order_code() -> str:
 
 
 ORDER_COLS = ("order_type", "customer_name", "phone", "region_id", "region_name", "delivery_eta", "address",
-              "comment", "payment_method", "subtotal", "discount", "promo_code", "delivery_fee", "total", "lang")
+              "comment", "payment_method", "pay_status", "subtotal", "discount", "promo_code", "delivery_fee", "total", "lang")
 
 
 async def create_order(user_id: int, data: dict, items: list[dict]) -> int:

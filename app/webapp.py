@@ -8,7 +8,7 @@ from aiogram import Bot
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 from aiohttp import web
 
-from . import admin_api, chat, db, inventory, products, regions, tickets
+from . import admin_api, chat, db, inventory, payments, products, regions, tickets
 from .brand import public_brand
 from .catalog import category_name, norm_lang, product_card, product_full, variant_label, variant_price
 from .config import config
@@ -149,6 +149,11 @@ async def order_json(order: dict, lang: str = "uz") -> dict:
         "address": order["address"],
         "comment": order["comment"],
         "payment_method": order["payment_method"],
+        "pay_status": order.get("pay_status") or "",
+        "pay_note": order.get("pay_note") or "",
+        "pay_receipt": order.get("pay_receipt") or "",
+        "can_upload_receipt": payments.can_upload(order),
+        "card": (_card_public(await db.get_settings()) if payments.can_upload(order) else None),
         "subtotal": order["subtotal"],
         "delivery_fee": order["delivery_fee"],
         "total": order["total"],
@@ -398,6 +403,51 @@ async def api_chat_send(request: web.Request) -> web.Response:
 
 # ---------------- qaytarish / muammo xabari ----------------
 
+def _card_public(s: dict) -> dict | None:
+    card = payments.card_info(s)
+    if not card:
+        return None
+    return {**card, "number": payments.format_number(card["number"])}
+
+
+async def api_receipt(request: web.Request) -> web.Response:
+    """Karta orqali to'lov cheki: multipart (photo)."""
+    lang = user_lang(request)
+    order = await _own_order(request)
+    if not order:
+        return api_error(t("order_not_found", lang), 404)
+    if not payments.can_upload(order):
+        return api_error(t("e_receipt_closed", lang), 409)
+    if not request.content_type.startswith("multipart/"):
+        return api_error(t("receipt_need_photo", lang))
+    path = ""
+    reader = await request.multipart()
+    while (part := await reader.next()) is not None:
+        if part.name == "photo" and part.filename and not path:
+            raw = await part.read(decode=False)
+            if len(raw) > admin_api.MAX_UPLOAD:
+                return api_error("Rasm juda katta")
+            try:
+                path = (await admin_api.save_upload(raw, "photo"))[0]
+            except Exception:  # noqa: BLE001
+                return api_error("Rasmni o'qib bo'lmadi")
+        else:
+            await part.read()
+    if not path:
+        return api_error(t("receipt_need_photo", lang))
+    try:
+        order = await payments.submit_receipt(order, path)
+    except payments.PaymentError as e:
+        return api_error(t(str(e), lang), 409)
+    bot = _bot(request)
+    if bot:
+        from .notify import notify_receipt, refresh_staff_messages
+
+        asyncio.create_task(notify_receipt(bot, order))
+        asyncio.create_task(refresh_staff_messages(bot, order["id"]))
+    return web.json_response({"ok": True, "order": await order_json(order, lang)})
+
+
 async def api_ticket(request: web.Request) -> web.Response:
     """Murojaat: multipart (kind, reason, photo...). Qaytarishda kamida bitta rasm shart."""
     lang = user_lang(request)
@@ -511,6 +561,7 @@ def create_app(bot: Bot | None) -> web.Application:
     r.add_get("/api/orders/{code}/chat", api_chat)
     r.add_post("/api/orders/{code}/chat", api_chat_send)
     r.add_post("/api/orders/{code}/tickets", api_ticket)
+    r.add_post("/api/orders/{code}/receipt", api_receipt)
     r.add_get("/admin", admin_redirect)
     r.add_get("/admin/", admin_file("index.html"))
     r.add_get("/admin/admin.js", admin_file("admin.js"))

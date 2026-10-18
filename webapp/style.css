@@ -431,3 +431,25 @@ textarea.input { height: auto; min-height: 92px; padding: 14px 16px; resize: non
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- karta orqali to'lov ---------- */
+.bank-card { position: relative; border-radius: 18px; padding: 16px 18px; overflow: hidden; color: #fff;
+  background: linear-gradient(135deg, #1b1b20 0%, #2a1412 55%, var(--brand) 140%); border: 1px solid rgba(255, 255, 255, .1); }
+.bank-card small { font-size: 12px; opacity: .7; letter-spacing: .04em; }
+.bank-card .num { font: 600 21px/1.3 var(--display); letter-spacing: .06em; margin: 14px 0 12px; white-space: nowrap; }
+.bank-card .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; opacity: .9; }
+.bank-card .copy { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 999px; font: 600 13px var(--sans, inherit);
+  color: #111; background: #fff; border: 0; cursor: pointer; }
+.bank-card .copy svg { width: 15px; height: 15px; }
+.upload { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 16px; border-radius: 16px; cursor: pointer;
+  border: 1.5px dashed rgba(255, 255, 255, .22); font-weight: 600; font-size: 14px; color: var(--text); }
+.upload svg { width: 20px; height: 20px; }
+.upload span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%; }
+.pay-state { display: flex; align-items: center; gap: 12px; padding: 14px 16px; border-radius: 18px; margin-top: 12px; }
+.pay-state svg { width: 24px; height: 24px; flex: none; }
+.pay-state span { display: flex; flex-direction: column; gap: 2px; }
+.pay-state small { color: var(--muted); font-size: 12.5px; }
+.pay-state.paid svg { color: #34d17a; }
+.pay-state.review svg { color: #ffb547; }
+.pay-state.rejected { background: rgba(255, 90, 80, .1); border: 1px solid rgba(255, 90, 80, .3); margin: 0 0 12px; }
+.pay-state.rejected svg { color: #ff6b61; }

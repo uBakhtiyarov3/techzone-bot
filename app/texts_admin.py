@@ -33,6 +33,7 @@ GROUPS: list[tuple[str, list[str]]] = [
     ]),
     ("💬 Buyurtma chati", ["chat_"]),
     ("↩️ Qaytarish va muammo xabari", ["issue_", "return_", "ticket_"]),
+    ("💳 Karta orqali to'lov (chek)", ["card_pay_info", "copy_card_btn", "receipt_", "pay_paid_msg", "pay_rejected_msg"]),
     ("🔔 Holat o'zgarishi xabarlari", ["sent_new", "track_btn", "st_", "status_photo"]),
     ("⭐ Baholash", ["rate_ask", "rate_thanks", "review_saved", "already_rated", "rate_not_ready"]),
     ("🏷 Holat nomlari", ["s_", "step_new"]),

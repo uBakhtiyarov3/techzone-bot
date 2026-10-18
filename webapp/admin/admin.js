@@ -330,6 +330,7 @@
           ${d.low_stock.length ? d.low_stock.map((v) => `<div class="list-row"><span>${esc(v.name)}${v.vals.length ? ` <span class="muted small">${esc(v.vals.join(", "))}</span>` : ""}</span><span class="badge ${v.stock <= 0 ? "red" : "yellow"}">${v.stock} ta</span></div>`).join("") : '<div class="empty">Hammasi yetarli ✅</div>'}</div>
         <div class="card glass"><div class="card-head"><h3>💬 Javobsiz chatlar</h3></div>
           ${d.unread_chats.length ? d.unread_chats.map((c) => `<div class="list-row"><a href="javascript:void 0" data-order="${c.id}">${esc(c.code)}</a><span class="small">${esc(c.customer_name)} · <span class="badge red">${c.unread}</span></span></div>`).join("") : '<div class="empty">Yangi xabar yo\'q</div>'}
+          ${d.pay_review ? `<div class="section-title">To'lovlar</div><div class="list-row"><span>🧾 Tekshiriladigan cheklar</span><button class="btn sm primary" data-paycheck>${d.pay_review} ta →</button></div>` : ""}
           <div class="section-title">Murojaatlar</div><div class="list-row"><span>↩️ Ochiq murojaatlar</span><button class="btn sm" data-goto="tickets">${d.open_tickets} ta →</button></div></div>
         <div class="card glass"><h3>👥 Mijozlar va baho</h3>
           <div class="list-row"><span>Buyurtma bergan mijozlar</span><b>${s.customers}</b></div>
@@ -340,11 +341,12 @@
       </div>`;
     $$("[data-period]", root).forEach((b) => (b.onclick = () => { S.period = b.dataset.period; route(); }));
     $$("[data-goto]", root).forEach((b) => (b.onclick = () => go(b.dataset.goto)));
+    $$("[data-paycheck]", root).forEach((b) => (b.onclick = () => { S.ordersTab = "payreview"; go("orders"); }));
     $$("[data-order]", root).forEach((a) => (a.onclick = () => orderModal(a.dataset.order)));
   };
 
   // ================= BUYURTMALAR =================
-  const ORDER_TABS = { active: "🔄 Faol", new: "🕐 Yangi", packing: "📦 Yig'ilmoqda", shipping: "🚚 Yo'lda",
+  const ORDER_TABS = { active: "🔄 Faol", payreview: "🧾 Chek tekshiruvi", new: "🕐 Yangi", packing: "📦 Yig'ilmoqda", shipping: "🚚 Yo'lda",
     delivered: "🎉 Yakunlangan", cancelled: "❌ Bekor", returned: "↩️ Qaytarilgan", all: "Hammasi" };
   PAGES.orders = async (root) => {
     if (!$("#or-list", root)) {
@@ -365,7 +367,7 @@
     const d = await api(`orders?status=${S.ordersTab}&q=${encodeURIComponent(S.ordersQ)}`);
     list.innerHTML = d.orders.length ? `<table class="t"><tr><th>ID</th><th>Holat</th><th>Mijoz</th><th>Turi</th><th class="right">Summa</th><th>Vaqt</th><th></th></tr>
       ${d.orders.map((o) => `<tr class="click" data-id="${o.id}">
-        <td><b class="mono">${esc(o.code)}</b>${o.unread ? ` <span class="badge red">💬 ${o.unread}</span>` : ""}</td><td>${stBadge(o)}</td>
+        <td><b class="mono">${esc(o.code)}</b>${o.unread ? ` <span class="badge red">💬 ${o.unread}</span>` : ""}</td><td>${stBadge(o)}${o.pay_status === "review" ? ' <span class="badge yellow">🧾 chek</span>' : o.pay_status === "await" ? ' <span class="badge off">💳 to\'lanmagan</span>' : o.pay_status === "paid" ? ' <span class="badge green">💳 to\'langan</span>' : ""}</td>
         <td>${esc(o.customer_name)}<div class="muted small">${esc(phone(o.phone))}</div></td>
         <td class="small">${o.order_type === "pickup" ? "🏬 Olib ketish" : `🚚 ${esc(o.region_name)}`}<div class="muted">${o.units} dona</div></td>
         <td class="right nowrap"><b>${money(o.total)}</b></td><td class="small nowrap">${esc(dt(o.created_at))}</td>
@@ -411,9 +413,15 @@
             <div class="list-row"><span>Telefon</span><a href="tel:${esc(o.phone)}">${esc(phone(o.phone))}</a></div>
             <div class="list-row"><span>Olish usuli</span><span>${isPickup ? "🏬 Do'kondan" : "🚚 Yetkazib berish"}</span></div>
             ${!isPickup ? `<div class="list-row"><span>Hudud</span><span>${esc(o.region_name)} · ${esc(o.delivery_eta)}</span></div><div class="small" style="padding:8px 0">📍 ${esc(o.address).replace(/(https:\/\/maps\S+)/, '<a href="$1" target="_blank">xaritada</a>')}</div>` : ""}
-            <div class="list-row"><span>To'lov</span><span>${esc(o.payment_label)}</span></div>
+            <div class="list-row"><span>To'lov</span><span>${esc(o.payment_label)}${o.pay_label ? " · " + esc(o.pay_label) : ""}</span></div>
             ${o.comment ? `<div class="preview" style="margin-top:8px">💬 ${esc(o.comment)}</div>` : ""}
             ${o.staff_name ? `<div class="list-row"><span>Mas'ul</span><span>${esc(o.staff_name)}</span></div>` : ""}</div>
+          ${o.payment_method === "card" ? `<div class="card glass ${o.pay_status === "review" ? "pay-review" : ""}"><h3>💳 Karta orqali to'lov</h3>
+            <div class="list-row"><span>Holat</span><b>${esc(o.pay_label || "—")}</b></div>
+            ${o.pay_note ? `<div class="list-row"><span>Rad etish sababi</span><span class="red">${esc(o.pay_note)}</span></div>` : ""}
+            ${o.pay_receipt ? `<a href="${esc(imgUrl(o.pay_receipt))}" target="_blank" class="receipt"><img src="${esc(imgUrl(o.pay_receipt))}" alt="Chek"></a>` : '<p class="muted small">Mijoz hali chek yubormagan.</p>'}
+            ${o.pay_status === "review" ? `<div class="hint">Summani (${money(o.total)}) hisobingizga tushganini tekshiring.</div><div class="btn-row" style="margin-top:10px">
+              <button class="btn primary" id="od-pay-ok">✅ To'lovni tasdiqlash</button><button class="btn danger" id="od-pay-no">❌ Rad etish</button></div>` : ""}</div>` : ""}
           <div class="card glass"><h3>🕒 Tarix</h3><div class="timeline-mini">${d.log.map((l) => `<div>${esc(dt(l.at))} — ${esc(STATUS[l.status] || l.status)}</div>`).join("")}</div>
             ${o.cancel_reason ? `<p class="small red">Sabab: ${esc(o.cancel_reason)}</p>` : ""}</div>
           ${d.tickets.length ? `<div class="card glass"><h3>↩️ Murojaatlar</h3>${d.tickets.map((t) => `<div class="list-row"><span>${t.kind === "return" ? "Qaytarish" : "Muammo"} №${t.id}</span>${ticketBadge(t)}</div>`).join("")}
@@ -455,6 +463,12 @@
       fd.append("file", file, file.name);
       fd.append("caption", $("#od-photo-cap", m).value);
       act(() => api(`orders/${id}/media`, { method: "POST", form: fd }), "Rasm mijozga yuborildi");
+    };
+    const pok = $("#od-pay-ok", m), pno = $("#od-pay-no", m);
+    if (pok) pok.onclick = () => act(() => api(`orders/${id}/payment`, { method: "POST", body: { action: "approve" } }), "To'lov tasdiqlandi, mijozga xabar yuborildi");
+    if (pno) pno.onclick = () => {
+      const note = prompt("Rad etish sababi (mijozga yuboriladi):", "Summa hisobga tushmadi");
+      if (note && note.trim().length >= 3) act(() => api(`orders/${id}/payment`, { method: "POST", body: { action: "reject", note: note.trim() } }), "Chek rad etildi, mijozga sabab yuborildi");
     };
     const gt = $("[data-goto-t]", m);
     if (gt) gt.onclick = () => { closeModal(); go("tickets"); };
@@ -992,6 +1006,12 @@
               <label class="f"><span>"Oz qoldi" chegarasi, dona</span><input type="number" id="s-low" min="0" value="${s.low_stock}"></label>
               <label class="f"><span>Qaytarish muddati, kun</span><input type="number" id="s-ret" min="0" max="365" value="${s.return_days}"><div class="hint">0 — qaytarish o'chirilgan</div></label></div>
             <div class="hint">Yetkazish narxlari va muddatlari — <a href="#regions">Yetkazish hududlari</a> bo'limida.</div></div>
+          <div class="card glass"><h3>💳 Karta orqali to'lov</h3>
+            <label class="switch" style="margin-bottom:12px"><input type="checkbox" id="s-card-on" ${s.card_enabled ? "checked" : ""}><i></i>Kartaga o'tkazma bilan to'lovni yoqish</label>
+            <label class="f"><span>Karta raqami</span><input id="s-card-num" inputmode="numeric" maxlength="23" value="${esc(s.card_number)}" placeholder="8600 1234 5678 9012"></label>
+            <div class="row"><label class="f"><span>Karta egasi</span><input id="s-card-holder" maxlength="60" value="${esc(s.card_holder)}" placeholder="ISM FAMILIYA"></label>
+              <label class="f"><span>Bank / karta turi</span><input id="s-card-bank" maxlength="40" value="${esc(s.card_bank)}" placeholder="Uzcard · Kapitalbank"></label></div>
+            <div class="hint">Mijoz buyurtmadan so'ng shu kartani ko'radi (nusxalash tugmasi bilan), pul o'tkazib chek yuklaydi. Chek menejerlarga botda va bu yerda <a href="#orders">Buyurtmalar → 🧾 Chek tekshiruvi</a> da chiqadi.</div></div>
         </div></div>
       <div class="card glass"><div class="card-head"><h3>🕐 Operatorlar ish vaqti</h3><button class="btn sm" id="sch-copy">Dushanbani hamma kunlarga</button></div>
         <div class="sched">${DAYS.map(([d, name]) => { const v = s.schedule[d]; return `<div class="sched-row ${v ? "" : "closed"}" data-day="${d}"><b>${name}</b>
@@ -1034,7 +1054,10 @@
         shop_map_url: v("#s-map").trim(), shop_lat: v("#s-lat").trim(), shop_lng: v("#s-lng").trim(),
         delivery_enabled: $("#s-deliv", root).checked, pickup_enabled: $("#s-pick", root).checked,
         min_order: +v("#s-min") || 0, low_stock: +v("#s-low") || 0, return_days: +v("#s-ret") || 0,
+        card_enabled: $("#s-card-on", root).checked, card_number: v("#s-card-num").trim(),
+        card_holder: v("#s-card-holder").trim(), card_bank: v("#s-card-bank").trim(),
       };
+      if (body.card_enabled && !body.card_number) return toast("Karta raqamini kiriting", "bad");
       const r = await run(() => api("settings", { method: "PUT", body }), "Saqlandi — bot va Mini App darhol yangilandi");
       if (r) { const me = await api("me").catch(() => null); if (me) applyBrand(me.brand); poll(); route(); }
     };

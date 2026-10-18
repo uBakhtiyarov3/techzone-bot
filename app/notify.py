@@ -3,7 +3,7 @@ import logging
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest, TelegramForbiddenError, TelegramRetryAfter
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import CopyTextButton, InlineKeyboardButton, InlineKeyboardMarkup
 
 from . import chat, db, inventory, products, rich
 from .brand import shop_name
@@ -87,6 +87,8 @@ async def notify_new_order(bot: Bot, order_id: int, notify_customer: bool = True
         except SAFE as e:
             log.warning("Xodimga yuborib bo'lmadi %s: %s", chat_id, e)
     await notify_low_stock(bot, items)
+    if order["payment_method"] == "card":
+        await send_card_instructions(bot, order)
 
     if not notify_customer:  # bot ichidagi savatdan berilganda mijozga tasdiq allaqachon ko'rsatilgan
         return
@@ -438,3 +440,85 @@ async def notify_ticket_decision(bot: Bot, ticket: dict) -> None:
                                reply_markup=order_track_kb(ticket["code"], lang))
     except SAFE as e:
         log.warning("Murojaat qarori yuborilmadi %s: %s", ticket["user_id"], e)
+
+
+# ---------------- karta orqali to'lov (chek) ----------------
+
+def receipt_customer_kb(order: dict, lang: str, number: str = "") -> InlineKeyboardMarkup:
+    rows = []
+    if number:
+        rows.append([InlineKeyboardButton(text=t("copy_card_btn", lang), copy_text=CopyTextButton(text=number))])
+    rows.append([InlineKeyboardButton(text=t("receipt_btn", lang), callback_data=f"sh:rc:{order['code']}")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+async def send_card_instructions(bot: Bot, order: dict, prefix: str = "") -> None:
+    """Mijozga karta raqami (nusxalash tugmasi bilan) va «Chekni yuborish» tugmasi."""
+    from . import payments
+
+    card = payments.card_info(await db.get_settings())
+    if not card or not payments.can_upload(order):
+        return
+    lang = await lang_of(order["user_id"])
+    number = payments.format_number(card["number"])
+    holder = " · ".join(x for x in (card["holder"], card["bank"]) if x)
+    text = prefix + t("card_pay_info", lang, code=order["code"], total=money(order["total"]),
+                      number=h(number), holder=h(holder))
+    try:
+        await bot.send_message(order["user_id"], text,
+                               reply_markup=receipt_customer_kb(order, lang, number.replace(" ", "")))
+    except SAFE as e:
+        log.warning("Karta ma'lumoti yuborilmadi %s: %s", order["user_id"], e)
+
+
+def receipt_staff_kb(order: dict) -> InlineKeyboardMarkup | None:
+    if order.get("pay_status") != "review":
+        return None
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ To'lovni tasdiqlash", callback_data=f"py:ok:{order['id']}"),
+         InlineKeyboardButton(text="❌ Rad etish", callback_data=f"py:no:{order['id']}")],
+        [InlineKeyboardButton(text="🧾 Buyurtma", callback_data=f"ov:{order['id']}")]])
+
+
+def receipt_view(order: dict) -> Rich:
+    from .payments import PAY_LABELS
+    from .utils import phone_fmt
+
+    view = Rich().h("🧾 TO'LOV CHEKI", 3)
+    view.table([["Buyurtma", f"<code>{order['code']}</code>"],
+                ["Summa", f"<b>{money(order['total'])}</b>"],
+                ["Mijoz", h(order["customer_name"])],
+                ["Telefon", h(phone_fmt(order["phone"]))],
+                ["Holat", PAY_LABELS.get(order.get("pay_status") or "", "—")]], striped=False)
+    if order.get("pay_receipt"):
+        view.img(order["pay_receipt"])
+    if order.get("pay_status") == "review":
+        view.footer("Summani hisobingizda tekshirib, tasdiqlang yoki sababini yozib rad eting.")
+    elif order.get("pay_note"):
+        view.footer("Sabab: " + h(order["pay_note"]))
+    return view
+
+
+async def notify_receipt(bot: Bot, order: dict) -> None:
+    """Yangi chek — menejerlarga (rasm va tasdiqlash tugmalari bilan)."""
+    view, kb = receipt_view(order), receipt_staff_kb(order)
+    for chat_id in sorted(await manager_ids()):
+        try:
+            await rich.send(bot, chat_id, view, kb)
+        except SAFE as e:
+            log.warning("Chek menejerga yuborilmadi %s: %s", chat_id, e)
+
+
+async def notify_pay_decision(bot: Bot, order: dict) -> None:
+    lang = await lang_of(order["user_id"])
+    try:
+        if order["pay_status"] == "paid":
+            await bot.send_message(order["user_id"], t("pay_paid_msg", lang, code=order["code"]),
+                                   reply_markup=order_track_kb(order["code"], lang))
+        elif order["pay_status"] == "rejected":
+            await bot.send_message(order["user_id"],
+                                   t("pay_rejected_msg", lang, code=order["code"], note=h(order["pay_note"])),
+                                   reply_markup=receipt_customer_kb(order, lang))
+    except SAFE as e:
+        log.warning("To'lov qarori yuborilmadi %s: %s", order["user_id"], e)
+    await refresh_staff_messages(bot, order["id"])

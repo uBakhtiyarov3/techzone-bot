@@ -20,7 +20,7 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from .. import chat, db, inventory, products, regions, rich, tickets
+from .. import chat, db, inventory, payments, products, regions, rich, tickets
 from ..catalog import (
     badge_labels, category_name, discount_active, option_value, product_desc, product_name, specs_public,
     variant_label, variant_price, warranty_text,
@@ -29,7 +29,7 @@ from ..filters import Btn
 from ..i18n import both, money_l, stars, status_text, t, ticket_status
 from ..keyboards import ikb, main_kb, webapp_ready, webapp_url
 from ..notify import (
-    add_chat_and_relay, notify_new_order, notify_restocked, notify_review, notify_ticket_new,
+    add_chat_and_relay, notify_new_order, notify_receipt, notify_restocked, notify_review, notify_ticket_new,
     refresh_staff_messages, save_telegram_photo,
 )
 from ..orders import OrderError, cancel_order, normalize_phone, place_order, public_settings, quote
@@ -68,6 +68,10 @@ class ReviewComment(StatesGroup):
 class TicketForm(StatesGroup):
     reason = State()
     photos = State()
+
+
+class ReceiptForm(StatesGroup):
+    photo = State()
 
 
 # ====================== ko'rsatish yordamchilari ======================
@@ -791,15 +795,14 @@ async def checkout_promo(message: Message, state: FSMContext) -> None:
     )
 
 
-@router.callback_query(F.data == "sh:pay:card")
-async def pay_card(call: CallbackQuery) -> None:
-    await call.answer(t("pay_card_alert", await lang_of(call.from_user.id)), show_alert=True)
-
-
-@router.callback_query(F.data == "sh:pay:cash", Checkout.payment)
+@router.callback_query(F.data.in_({"sh:pay:cash", "sh:pay:card"}), Checkout.payment)
 async def pay_cash(call: CallbackQuery, state: FSMContext) -> None:
     lang = await lang_of(call.from_user.id)
-    await state.update_data(payment_method="cash")
+    method = call.data.rsplit(":", 1)[1]
+    if method == "card" and not payments.card_info(await db.get_settings()):
+        await call.answer(t("pay_card_alert", lang), show_alert=True)
+        return
+    await state.update_data(payment_method=method)
     await state.set_state(Checkout.confirm)
     data = await state.get_data()
     try:
@@ -825,7 +828,7 @@ async def pay_cash(call: CallbackQuery, state: FSMContext) -> None:
         totals.append((t("delivery", lang), money_l(q["delivery_fee"], lang) if q["delivery_fee"] else t("free", lang)))
     totals.append((f"<b>{t('total', lang)}</b>", f"<b>{money_l(q['total'], lang)}</b>"))
     _items_table(view, lines, lang, totals)
-    info = [[t("payment", lang), t("pay_cash", lang)],
+    info = [[t("payment", lang), t("pay_card" if data.get("payment_method") == "card" else "pay_cash", lang)],
             ["🚚" if otype == "delivery" else "🏬", t("type_delivery" if otype == "delivery" else "type_pickup", lang)],
             ["👤", h(data["name"])], ["📞", phone_fmt(data["phone"])]]
     if otype == "delivery" and q["region"]:
@@ -841,7 +844,7 @@ async def pay_cash(call: CallbackQuery, state: FSMContext) -> None:
     await call.answer()
 
 
-@router.callback_query(F.data == "sh:pay:cash")
+@router.callback_query(F.data.in_({"sh:pay:cash", "sh:pay:card"}))
 async def pay_cash_stale(call: CallbackQuery) -> None:
     await call.answer(t("form_stale", await lang_of(call.from_user.id)), show_alert=True)
 
@@ -963,6 +966,11 @@ async def order_detail_view(order: dict, lang: str) -> tuple[Rich, InlineKeyboar
         view.p(t("pickup_from", lang, address=h(shop or t("pickup_shop", lang))))
     if order.get("comment"):
         view.p(f"💬 {h(order['comment'])}")
+    if order["payment_method"] == "card" and order.get("pay_status"):
+        pay = t("pay_card", lang) + " · " + t("pay_" + order["pay_status"], lang)
+        if order["pay_status"] == "rejected" and order.get("pay_note"):
+            pay += "\n" + t("reason", lang, reason=h(order["pay_note"]))
+        view.quote(pay)
 
     media = await chat.get_media(order["id"])
     if media:
@@ -990,6 +998,8 @@ async def order_detail_view(order: dict, lang: str) -> tuple[Rich, InlineKeyboar
 
     rows = []
     code = order["code"]
+    if payments.can_upload(order):
+        rows.append([(t("receipt_btn", lang), f"sh:rc:{code}")])
     if tickets.chat_open(order):
         rows.append([(t("refresh", lang), f"sh:o:{code}")])
         unread = await chat.unread_count(order["id"], "customer")
@@ -1257,3 +1267,58 @@ async def review_skip(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
     except TelegramBadRequest:
         pass
     await _finish_review(call.message, state, bot, int(call.data.split(":")[1]), call.from_user.id)
+
+
+# ====================== karta orqali to'lov: chek ======================
+
+@router.callback_query(F.data.startswith("sh:rc:"))
+async def receipt_start(call: CallbackQuery, state: FSMContext) -> None:
+    lang = await lang_of(call.from_user.id)
+    order = await db.get_order_by_code(call.data.split(":", 2)[2])
+    if not order or order["user_id"] != call.from_user.id:
+        await call.answer(t("order_not_found", lang), show_alert=True)
+        return
+    if not payments.can_upload(order):
+        await call.answer(t("pay_review", lang) if order.get("pay_status") == "review" else t("e_receipt_closed", lang),
+                          show_alert=True)
+        return
+    await state.set_state(ReceiptForm.photo)
+    await state.update_data(receipt_code=order["code"])
+    await call.answer()
+    card = payments.card_info(await db.get_settings())
+    pre = (f"💳 <code>{h(payments.format_number(card['number']))}</code> · <b>{money_l(order['total'], lang)}</b>\n\n"
+           if card else "")
+    await call.message.answer(pre + t("receipt_ask", lang), reply_markup=_reply_kb(_cancel_row(lang)))
+
+
+@router.message(ReceiptForm.photo, F.photo | F.document)
+async def receipt_photo(message: Message, state: FSMContext, bot: Bot) -> None:
+    lang = await lang_of(message.from_user.id)
+    if message.document and not (message.document.mime_type or "").startswith("image/"):
+        await message.answer(t("receipt_need_photo", lang))
+        return
+    code = (await state.get_data()).get("receipt_code") or ""
+    order = await db.get_order_by_code(code)
+    await state.clear()
+    if not order or order["user_id"] != message.from_user.id or not payments.can_upload(order):
+        await _back_to_main(message, t("e_receipt_closed", lang), message.from_user.id)
+        return
+    file_id = message.photo[-1].file_id if message.photo else message.document.file_id
+    path = await save_telegram_photo(bot, file_id, "receipt")
+    if not path:
+        await _back_to_main(message, t("receipt_need_photo", lang), message.from_user.id)
+        return
+    order = await payments.submit_receipt(order, path)
+    await _back_to_main(message, t("receipt_sent", lang), message.from_user.id)
+    await notify_receipt(bot, order)
+    await refresh_staff_messages(bot, order["id"])
+
+
+@router.message(ReceiptForm.photo)
+async def receipt_other(message: Message, state: FSMContext) -> None:
+    lang = await lang_of(message.from_user.id)
+    if message.text and message.text in (t("co_cancel", "uz"), t("co_cancel", "ru")):
+        await state.clear()
+        await _back_to_main(message, t("main_menu", lang), message.from_user.id)
+        return
+    await message.answer(t("receipt_need_photo", lang))

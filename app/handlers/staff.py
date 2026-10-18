@@ -4,11 +4,12 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import CallbackQuery, Message
 
-from .. import chat, db, rich, tickets
+from .. import chat, db, payments, rich, tickets
 from ..keyboards import B, cancel_kb, ikb, order_staff_kb, staff_kb
 from ..notify import (
-    add_chat_and_relay, notify_restocked, notify_status_change, notify_ticket_decision, refresh_staff_messages,
-    save_telegram_photo, send_status_photo, ticket_staff_kb, ticket_view,
+    add_chat_and_relay, manager_ids, notify_pay_decision, notify_restocked, notify_status_change,
+    notify_ticket_decision, receipt_staff_kb, receipt_view, refresh_staff_messages, save_telegram_photo,
+    send_status_photo, ticket_staff_kb, ticket_view,
 )
 from ..order_card import send_order_card
 from ..orders import cancel_order, decide_ticket
@@ -33,6 +34,7 @@ class StaffInput(StatesGroup):
     chat = State()
     serial = State()
     reject_note = State()
+    pay_reject = State()
 
 
 @router.message(StateFilter(None), F.text == B.STAFF)
@@ -338,3 +340,59 @@ async def ticket_reject_note(message: Message, state: FSMContext, bot: Bot) -> N
         return
     await _apply_ticket(bot, ticket, "reject", message.from_user.id, message.text.strip())
     await message.answer(f"❌ №{ticket['id']} rad etildi, mijozga sabab bilan xabar yuborildi.", reply_markup=staff_kb())
+
+
+# ---------------- to'lov cheki (faqat menejerlar) ----------------
+
+@router.callback_query(F.data.startswith("py:"))
+async def payment_action(call: CallbackQuery, state: FSMContext, bot: Bot) -> None:
+    if call.from_user.id not in await manager_ids():
+        await call.answer("To'lovni faqat menejer tasdiqlaydi", show_alert=True)
+        return
+    _, action, oid = call.data.split(":")
+    order = await db.get_order(int(oid))
+    if not order:
+        await call.answer("Buyurtma topilmadi", show_alert=True)
+        return
+    if order.get("pay_status") != "review":
+        await call.answer("Chek allaqachon ko'rib chiqilgan", show_alert=True)
+        await rich.edit(call.message, receipt_view(order), None)
+        return
+    if action == "no":
+        await state.set_state(StaffInput.pay_reject)
+        await state.update_data(order_id=order["id"], msg_id=call.message.message_id)
+        await call.answer()
+        await call.message.answer(f"❌ {order['code']} — chekni rad etish sababini yozing (mijozga yuboriladi):",
+                                  reply_markup=cancel_kb())
+        return
+    order = await payments.decide(order, True, call.from_user.id)
+    await notify_pay_decision(bot, order)
+    await rich.edit(call.message, receipt_view(order), receipt_staff_kb(order))
+    await call.answer("✅ To'lov tasdiqlandi, mijozga xabar yuborildi")
+
+
+@router.message(StaffInput.pay_reject, F.text)
+async def payment_reject_note(message: Message, state: FSMContext, bot: Bot) -> None:
+    if message.text == B.CANCEL:
+        await state.clear()
+        await message.answer("Bekor qilindi.", reply_markup=staff_kb())
+        return
+    data = await state.get_data()
+    order = await db.get_order(data.get("order_id") or 0)
+    note = message.text.strip()
+    if len(note) < 3:
+        await message.answer("Sababni to'liqroq yozing:")
+        return
+    await state.clear()
+    if not order or order.get("pay_status") != "review":
+        await message.answer("Chek topilmadi yoki allaqachon ko'rib chiqilgan.", reply_markup=staff_kb())
+        return
+    order = await payments.decide(order, False, message.from_user.id, note)
+    await notify_pay_decision(bot, order)
+    if data.get("msg_id"):
+        try:
+            await bot.edit_message_reply_markup(chat_id=message.chat.id, message_id=data["msg_id"], reply_markup=None)
+        except Exception:  # noqa: BLE001
+            pass
+    await message.answer(f"❌ {order['code']} cheki rad etildi, mijozga sabab bilan xabar yuborildi.",
+                         reply_markup=staff_kb())

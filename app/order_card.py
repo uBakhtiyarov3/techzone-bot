@@ -20,7 +20,7 @@ from aiogram.types import (
     RichTextPhoneNumber,
 )
 
-from .utils import PAYMENT_LABELS, TYPE_LABELS, format_order, item_title, money, phone_fmt, status_label
+from .utils import TYPE_LABELS, payment_text, format_order, item_title, money, phone_fmt, status_label
 
 log = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def rich_order(order: dict, items: list[dict], header: str = "") -> InputRichMes
     if otype == "delivery":
         info.append([_cell("🗺 Hudud"), _cell(f"{order.get('region_name') or '—'} · {order.get('delivery_eta') or ''}")])
         info.append([_cell("📍 Manzil"), _cell(order["address"])])
-    info.append([_cell("💵 To'lov"), _cell(PAYMENT_LABELS.get(order["payment_method"], order["payment_method"]))])
+    info.append([_cell("💵 To'lov"), _cell(payment_text(order))])
     if order.get("staff_name"):
         info.append([_cell("👷 Mas'ul"), _cell(order["staff_name"])])
     blocks.append(InputRichBlockTable(cells=info, is_bordered=True, is_compact=True))

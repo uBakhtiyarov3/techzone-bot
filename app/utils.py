@@ -32,6 +32,14 @@ PICKUP_NEXT = {
 ACTIVE_STATUSES = ("new", "accepted", "packing", "shipping")
 TYPE_LABELS = {"delivery": "🚚 Yetkazib berish", "pickup": "🏬 Olib ketish"}
 PAYMENT_LABELS = {"cash": "💵 Naqd", "card": "💳 Karta"}
+PAY_STATUS_LABELS = {"await": "⏳ chek kutilmoqda", "review": "🧾 chek tekshirilmoqda", "paid": "✅ to'landi",
+                     "rejected": "❌ chek rad etildi"}
+
+
+def payment_text(order: dict) -> str:
+    base = PAYMENT_LABELS.get(order["payment_method"], order["payment_method"])
+    st = PAY_STATUS_LABELS.get(order.get("pay_status") or "")
+    return f"{base} · {st}" if st else base
 
 
 def status_label(status: str, order_type: str = "delivery") -> str:
@@ -95,7 +103,7 @@ def format_order(order: dict, items: list[dict], for_staff: bool = True) -> str:
         lines.append(f"Yetkazish ({h(order.get('region_name') or '')}): "
                      f"{money(order['delivery_fee']) if order['delivery_fee'] else 'bepul'}")
     lines.append(f"<b>Jami: {money(order['total'])}</b>")
-    lines.append(f"To'lov: {PAYMENT_LABELS.get(order['payment_method'], order['payment_method'])}")
+    lines.append(f"To'lov: {payment_text(order)}")
     lines.append("")
     lines.append(f"👤 {h(order['customer_name'])}" + (" 🇷🇺" if order.get("lang") == "ru" else ""))
     lines.append(f"📞 {h(phone_fmt(order['phone']))}")

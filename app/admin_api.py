@@ -20,7 +20,7 @@ from aiogram.types import BufferedInputFile, InlineKeyboardButton, InlineKeyboar
 from aiogram.utils.web_app import safe_parse_webapp_init_data
 from aiohttp import web
 
-from . import chat, db, hours, inventory, products, regions, tickets
+from . import chat, db, hours, inventory, payments, products, regions, tickets
 from .backup import make_backup
 from .brand import BRAND_KEYS, HEX_RE, public_brand, shop_name
 from .catalog import BADGES, badges_of, discount_active, variant_label, variant_price
@@ -171,6 +171,7 @@ async def dashboard(request: web.Request) -> web.Response:
         stock_value=await inventory.stock_value(),
         unread_chats=await chat.unread_orders_for_staff(),
         open_tickets=await tickets.open_count(),
+        pay_review=await payments.review_count(),
         status=public_settings(raw),
     )
 
@@ -771,6 +772,10 @@ async def _settings_payload() -> web.Response:
         "shop_lng": raw.get("shop_lng") or "",
         "delivery_enabled": raw.get("delivery_enabled", "1") == "1",
         "pickup_enabled": raw.get("pickup_enabled", "1") == "1",
+        "card_enabled": raw.get("card_enabled", "0") == "1",
+        "card_number": raw.get("card_number") or "",
+        "card_holder": raw.get("card_holder") or "",
+        "card_bank": raw.get("card_bank") or "",
     }, status=public_settings(raw))
 
 
@@ -808,6 +813,17 @@ async def settings_save(request: web.Request) -> web.Response:
                        ("website", 200)):
         if key in data:
             updates[key] = _str(data, key, limit, key == "shop_name")
+    if "card_number" in data:
+        number = _str(data, "card_number", 30)
+        digits = re.sub(r"\D", "", number)
+        if number and not 12 <= len(digits) <= 19:
+            raise ValueError("Karta raqami 16 xonali bo'lsin")
+        updates["card_number"] = " ".join(digits[i:i + 4] for i in range(0, len(digits), 4))
+    for key, limit in (("card_holder", 60), ("card_bank", 40)):
+        if key in data:
+            updates[key] = _str(data, key, limit)
+    if "card_enabled" in data:
+        updates["card_enabled"] = "1" if data["card_enabled"] else "0"
     for key in ("shop_logo", "shop_mark", "shop_banner"):
         if key in data:
             updates[key] = _image(data[key])
@@ -937,6 +953,7 @@ def _order_row(o: dict) -> dict:
         "status_label": status_label(o["status"], o["order_type"]),
         "type_label": TYPE_LABELS.get(o["order_type"], ""),
         "payment_label": PAYMENT_LABELS.get(o["payment_method"], ""),
+        "pay_label": payments.PAY_LABELS.get(o.get("pay_status") or "", ""),
         "next": next_status(o["status"], o["order_type"]),
     }
 
@@ -953,6 +970,8 @@ async def orders(request: web.Request) -> web.Response:
     if kind == "active":
         sql += f" AND o.status IN ({','.join('?' * len(ACTIVE_STATUSES))})"
         args += list(ACTIVE_STATUSES)
+    elif kind == "payreview":
+        sql += " AND o.pay_status = 'review'"
     elif kind in ("delivered", "cancelled", "returned", "new", "accepted", "packing", "shipping"):
         sql += " AND o.status = ?"
         args.append(kind)
@@ -984,6 +1003,25 @@ async def order_detail(request: web.Request) -> web.Response:
     if not await db.get_order(oid):
         return err("Topilmadi", 404)
     return ok(**await _order_payload(oid))
+
+
+@admin_only
+async def order_payment(request: web.Request) -> web.Response:
+    """Chekni tasdiqlash yoki rad etish: {action: approve|reject, note}."""
+    order = await db.get_order(int(request.match_info["id"]))
+    if not order:
+        return err("Topilmadi", 404)
+    data = await _body(request)
+    try:
+        order = await payments.decide(order, data.get("action") == "approve", request["admin_id"],
+                                      str(data.get("note") or ""))
+    except payments.PaymentError as e:
+        return err({"e_receipt_not_review": "Chek allaqachon ko'rib chiqilgan. Sahifani yangilang.",
+                    "e_reject_reason": "Rad etish sababini yozing"}.get(str(e), str(e)), 409)
+    from .notify import notify_pay_decision
+
+    _bg(request, notify_pay_decision, order)
+    return ok(**await _order_payload(order["id"]))
 
 
 @admin_only
@@ -1384,6 +1422,7 @@ def setup(app: web.Application) -> None:
     r.add_get("/api/admin/orders/{id:\\d+}", order_detail)
     r.add_post("/api/admin/orders/{id:\\d+}/status", order_status)
     r.add_post("/api/admin/orders/{id:\\d+}/serials", order_serials)
+    r.add_post("/api/admin/orders/{id:\\d+}/payment", order_payment)
     r.add_post("/api/admin/orders/{id:\\d+}/chat", order_chat_send)
     r.add_post("/api/admin/orders/{id:\\d+}/media", order_media_upload)
     r.add_delete("/api/admin/orders/{id:\\d+}", order_delete)

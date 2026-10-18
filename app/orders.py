@@ -63,7 +63,7 @@ def public_settings(s: dict) -> dict:
         "schedule_ru": hours.schedule_summary(s, "ru"),
         "delivery_enabled": s.get("delivery_enabled", "1") == "1",
         "pickup_enabled": s.get("pickup_enabled", "1") == "1",
-        "card_enabled": s.get("card_enabled", "0") == "1",
+        "card_enabled": s.get("card_enabled", "0") == "1" and bool((s.get("card_number") or "").strip()),
         "shop_address": s.get("shop_address") or "",
         "shop_map_url": s.get("shop_map_url") or "",
         "low_stock": int(s.get("low_stock") or 3),
@@ -218,8 +218,11 @@ async def place_order(user_id: int, data: dict, raw_items) -> int:
         if not 5 <= len(address) <= 300:
             raise OrderError("e_address")
     if payment == "card":
-        raise OrderError("e_card")
-    if payment != "cash":
+        from . import payments
+
+        if not payments.card_info(await db.get_settings()):
+            raise OrderError("e_card")
+    elif payment != "cash":
         raise OrderError("e_payment")
 
     last = await db.scalar("SELECT MAX(created_at) FROM orders WHERE user_id = ?", user_id)
@@ -239,6 +242,7 @@ async def place_order(user_id: int, data: dict, raw_items) -> int:
             "region_name": region["name"] if region else "",
             "delivery_eta": regions.eta_text(region, "uz") if region else "",
             "address": address, "comment": comment, "payment_method": payment,
+            "pay_status": "await" if payment == "card" else "",
             "subtotal": q["subtotal"], "discount": q["discount"], "promo_code": q["promo_code"],
             "delivery_fee": q["delivery_fee"], "total": q["total"], "lang": lang,
         }, q["items"])

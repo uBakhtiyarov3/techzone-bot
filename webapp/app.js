@@ -522,8 +522,9 @@
         <div class="field"><span>${T("promo")}</span><div class="promo"><input class="input" id="f-promo" placeholder="${esc(T("promoPh"))}" value="${esc(co.quote && co.quote.promo_code || "")}">
           <button class="btn btn-white" data-act="promo">${co.quote && co.quote.promo_code ? T("remove") : T("apply")}</button></div><div id="promo-msg"></div></div>
         <div class="field"><span>${T("payment")}</span><div class="pay">
-          <button class="pay-o glass on" data-pay="cash">${ico("cash")}<span class="t"><b>${T("cash")}</b><small>${T("cashSub")}</small></span><span class="radio"></span></button>
-          <button class="pay-o glass soon" data-pay="card">${ico("card")}<span class="t"><b>${T("card")}</b><small>${T("cardSoon")}</small></span><span class="pill-soon">${T("soon")}</span></button></div></div>
+          <button class="pay-o glass ${co.pay === "cash" ? "on" : ""}" data-pay="cash">${ico("cash")}<span class="t"><b>${T("cash")}</b><small>${T("cashSub")}</small></span><span class="radio"></span></button>
+          ${st.card_enabled ? `<button class="pay-o glass ${co.pay === "card" ? "on" : ""}" data-pay="card">${ico("card")}<span class="t"><b>${T("card")}</b><small>${T("cardSub")}</small></span><span class="radio"></span></button>`
+            : `<button class="pay-o glass soon" data-pay="card">${ico("card")}<span class="t"><b>${T("card")}</b><small>${T("cardSoon")}</small></span><span class="pill-soon">${T("soon")}</span></button>`}</div></div>
         <div class="summary glass" id="sum"></div>
         ${st.is_open ? "" : `<div class="note glass">${ico("bell")}<span>${T("afterHours", { time: st.next_open || "" })}</span></div>`}
         <div class="buybar glass"><div class="total"><small>${T("total")}</small><b id="pay-total">—</b></div>
@@ -533,7 +534,12 @@
       const ph = document.getElementById("f-phone");
       ph.addEventListener("input", () => { co.phone = phoneDigits(ph.value); ph.value = phoneFmt(co.phone); save(); });
       view.querySelectorAll("[data-type]").forEach((b) => b.addEventListener("click", () => { co.type = b.dataset.type; save(); haptic("sel"); draw(); quote(); }));
-      view.querySelector('[data-pay="card"]').addEventListener("click", () => toast(T("cardSoon")));
+      if (!st.card_enabled && co.pay === "card") co.pay = "cash";
+      view.querySelectorAll("[data-pay]").forEach((b) => b.addEventListener("click", () => {
+        if (b.dataset.pay === "card" && !st.card_enabled) return toast(T("cardSoon"));
+        co.pay = b.dataset.pay; save(); haptic("sel");
+        view.querySelectorAll("[data-pay]").forEach((x) => x.classList.toggle("on", x === b));
+      }));
       const on = (name, fn) => { const el = view.querySelector(`[data-act="${name}"]`); el && el.addEventListener("click", fn); };
       on("region", () => openSheet(`<h3>${T("region")}</h3><div class="opt-list">${S.boot.regions.map((x) => `<button data-rg="${x.id}" class="${x.id === co.region ? "on" : ""}">
           <span>${esc(x.name)}<br><small>${T("eta")}: ${esc(x.eta)}</small></span><span>${x.fee ? money(x.fee) : T("free")}</span></button>`).join("")}</div>
@@ -571,7 +577,7 @@
           promo_code: co.quote && co.quote.promo_code || "", payment_method: co.pay } });
         S.cart = []; saveCart(); S.orders = null; S.pcache = {};
         haptic("ok");
-        location.replace("#placed/" + r.order.code);
+        location.replace(co.pay === "card" ? "#o" + r.order.code : "#placed/" + r.order.code);
       } catch (e) {
         toast(e.message, true); co.sending = false; btn.disabled = false; btn.textContent = T("confirm");
       }
@@ -637,6 +643,21 @@
         : `<div class="empty"><div class="big glass">${ico("box")}</div><h3>${T("noOrders")}</h3><button class="btn btn-white" data-go="#catalog">${T("toCatalog")}</button></div>`}`;
   }
 
+  function payBox(o) {
+    if (o.payment_method !== "card" || !o.pay_status || ["cancelled", "returned"].includes(o.status)) return "";
+    if (o.pay_status === "paid") return `<div class="pay-state paid glass">${ico("check")}<span><b>${T("payPaid")}</b><small>${T("card")} · ${money(o.total)}</small></span></div>`;
+    if (o.pay_status === "review") return `<div class="pay-state review glass">${ico("clock")}<span><b>${T("payReview")}</b><small>${T("payReviewSub")}</small></span></div>`;
+    const c = o.card;
+    return `<div class="card-box glass paybox"><h3>${ico("card")}${T("payTitle")}</h3>
+      ${o.pay_status === "rejected" ? `<div class="pay-state rejected">${ico("alert")}<span><b>${T("payRejected")}</b><small>${T("reason")}: ${esc(o.pay_note)}</small></span></div>` : ""}
+      ${c ? `<div class="bank-card"><small>${esc(c.bank || T("card"))}</small><div class="num">${esc(c.number)}</div>
+        <div class="row"><span>${esc(c.holder)}</span><button class="copy" data-act="copycard">${ico("copy")}${T("copy")}</button></div></div>` : ""}
+      <div class="sum-row total" style="margin-top:12px"><span>${T("total")}</span><b>${money(o.total)}</b></div>
+      <p class="muted" style="font-size:13px;margin:6px 0 12px">${T("payHint")}</p>
+      <label class="upload glass"><input type="file" id="rc-file" accept="image/*" hidden>${ico("camera")}<span id="rc-name">${T("chooseReceipt")}</span></label>
+      <button class="btn btn-primary btn-block" id="rc-send" data-act="rcsend" disabled style="margin-top:10px">${o.pay_status === "rejected" ? T("resend") : T("sendReceipt")}</button></div>`;
+  }
+
   async function renderOrder(r) {
     view.innerHTML = `<div class="sk" style="height:220px"></div>`;
     let o = (await api(`/api/orders/${encodeURIComponent(r.code)}`)).order;
@@ -652,6 +673,7 @@
               <span class="dot">${i < reached || s === "delivered" && i === reached ? ico("check") : ""}</span>${esc(s === "new" ? T("stepNew") : statusName(s, o.order_type))}
               ${o.timeline[s] ? `<small>${o.timeline[s].slice(5, 16).replace("-", ".")}</small>` : ""}</li>`).join("")}</ul>`}
           ${o.order_type === "delivery" && o.eta && ACTIVE.includes(o.status) ? `<div class="note glass" style="margin-top:14px">${ico("truck")}<span>${esc(o.region)} · ${T("eta")}: <b style="color:var(--text)">${esc(o.eta)}</b></span></div>` : ""}</div>
+        ${payBox(o)}
         ${o.media.length ? `<div class="card-box glass"><h3>${ico("camera")}${T("statusPhotos")}</h3><div class="media-row">${o.media.map((m) => `<figure><a href="${esc(img(m.path))}" target="_blank"><img src="${esc(img(m.path))}" alt=""></a><figcaption>${esc(statusName(m.status, o.order_type))}${m.caption ? " · " + esc(m.caption) : ""}</figcaption></figure>`).join("")}</div></div>` : ""}
         <div class="card-box glass"><h3>${ico("box")}${T("items")}</h3>
           ${o.items.map((i) => `<div class="oi"><img src="${esc(img(i.image))}" alt=""><div class="t"><b>${esc(i.name)}</b><small>${i.variant ? esc(i.variant) + " · " : ""}×${i.qty}</small></div><b>${money(i.price * i.qty)}</b></div>`).join("")}
@@ -679,6 +701,31 @@
       }));
       on("issue", () => ticketSheet("issue"));
       on("return", () => ticketSheet("return"));
+      on("copycard", async () => {
+        const num = o.card.number.replace(/\s/g, "");
+        try { await navigator.clipboard.writeText(num); } catch (e) {
+          const ta = document.createElement("textarea"); ta.value = num; document.body.appendChild(ta); ta.select();
+          try { document.execCommand("copy"); } catch (_) { /* eski brauzer */ } ta.remove();
+        }
+        haptic("ok"); toast("✓ " + T("copied"));
+      });
+      const rcIn = document.getElementById("rc-file");
+      if (rcIn) rcIn.addEventListener("change", () => {
+        const f = rcIn.files[0];
+        const lab = document.getElementById("rc-name");
+        lab.textContent = f ? f.name : T("chooseReceipt");
+        document.getElementById("rc-send").disabled = !f;
+      });
+      on("rcsend", async (e) => {
+        const f = rcIn && rcIn.files[0];
+        if (!f) return;
+        const btn = e.currentTarget; btn.disabled = true; btn.textContent = T("sending");
+        try {
+          const fd = new FormData(); fd.append("photo", f, f.name || "receipt.jpg");
+          o = (await api(`/api/orders/${o.code}/receipt`, { method: "POST", body: fd })).order;
+          haptic("ok"); toast("🧾 " + T("receiptSent")); draw();
+        } catch (err) { toast(err.message, true); btn.disabled = false; btn.textContent = T("sendReceipt"); }
+      });
       let stars = 0;
       view.querySelectorAll("[data-star]").forEach((b) => b.addEventListener("click", () => {
         stars = +b.dataset.star; haptic("sel");
