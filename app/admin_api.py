@@ -30,7 +30,7 @@ from .notify import (
     add_chat_and_relay, delete_order, notify_restocked, notify_status_change, notify_ticket_decision,
     refresh_staff_messages, send_status_photo,
 )
-from .orders import cancel_order, decide_ticket, public_settings
+from .orders import cancel_order, decide_ticket, normalize_phone, public_settings
 from .roles import get_role
 from .texts_admin import catalog, validate
 from .utils import (
@@ -1194,6 +1194,109 @@ async def customers(request: web.Request) -> web.Response:
     return ok(customers=rows, total=total, buyers=buyers)
 
 
+# ---------------- tahrirlash va o'chirish (faqat menejer) ----------------
+
+@admin_only
+async def review_delete(request: web.Request) -> web.Response:
+    await db.execute("DELETE FROM reviews WHERE id = ?", int(request.match_info["id"]))
+    return ok()
+
+
+@admin_only
+async def ticket_delete(request: web.Request) -> web.Response:
+    await db.execute("DELETE FROM tickets WHERE id = ?", int(request.match_info["id"]))
+    return ok()
+
+
+@admin_only
+async def order_edit(request: web.Request) -> web.Response:
+    """Mijoz ma'lumotlarini tuzatish: ism, telefon, manzil, izoh."""
+    order = await db.get_order(int(request.match_info["id"]))
+    if not order:
+        return err("Topilmadi", 404)
+    data = await _body(request)
+    fields: dict = {}
+    if "customer_name" in data:
+        fields["customer_name"] = _str(data, "customer_name", 64, True)
+    if "phone" in data:
+        phone = normalize_phone(str(data.get("phone") or ""))
+        if not phone:
+            raise ValueError("Telefon raqami noto'g'ri")
+        fields["phone"] = phone
+    if "address" in data:
+        fields["address"] = _str(data, "address", 300)
+    if "comment" in data:
+        fields["comment"] = _str(data, "comment", 300)
+    if fields:
+        fields["updated_at"] = now_str()
+        await db.update_row("orders", order["id"], fields, {*fields})
+        _bg(request, refresh_staff_messages, order["id"])
+    return ok(**await _order_payload(order["id"]))
+
+
+@admin_only
+async def order_chat_delete(request: web.Request) -> web.Response:
+    oid, mid = int(request.match_info["id"]), int(request.match_info["mid"])
+    await db.execute("DELETE FROM order_chat WHERE id = ? AND order_id = ?", mid, oid)
+    return ok(**await _order_payload(oid))
+
+
+@admin_only
+async def order_media_delete(request: web.Request) -> web.Response:
+    oid, mid = int(request.match_info["id"]), int(request.match_info["mid"])
+    await db.execute("DELETE FROM order_media WHERE id = ? AND order_id = ?", mid, oid)
+    return ok(**await _order_payload(oid))
+
+
+@admin_only
+async def customer_edit(request: web.Request) -> web.Response:
+    uid = int(request.match_info["id"])
+    if not await db.get_user(uid):
+        return err("Topilmadi", 404)
+    data = await _body(request)
+    fields: dict = {}
+    if "full_name" in data:
+        fields["full_name"] = _str(data, "full_name", 64)
+    if "phone" in data:
+        raw = str(data.get("phone") or "").strip()
+        phone = normalize_phone(raw) if raw else ""
+        if raw and not phone:
+            raise ValueError("Telefon raqami noto'g'ri")
+        fields["phone"] = phone
+    if "address" in data:
+        fields["address"] = _str(data, "address", 300)
+    await db.update_row("users", uid, fields, {"full_name", "phone", "address"})
+    return ok()
+
+
+@admin_only
+async def customer_delete(request: web.Request) -> web.Response:
+    uid = int(request.match_info["id"])
+    user = await db.get_user(uid)
+    if not user:
+        return err("Topilmadi", 404)
+    if user["role"] != "user" or uid in config.admin_ids:
+        return err("Xodim yoki menejerni bu yerdan o'chirib bo'lmaydi — avval «Xodimlar» dan olib tashlang")
+    if await db.scalar("SELECT COUNT(*) FROM orders WHERE user_id = ?", uid):
+        return err("Bu mijozning buyurtmalari bor. Avval buyurtmalarini o'chiring (statistika uchun saqlash tavsiya qilinadi).")
+    for table in ("cart_items", "favorites", "stock_alerts", "reviews", "tickets", "admin_sessions"):
+        await db.execute(f"DELETE FROM {table} WHERE user_id = ?", uid)
+    await db.execute("DELETE FROM users WHERE id = ?", uid)
+    return ok()
+
+
+@admin_only
+async def supplier_delete(request: web.Request) -> web.Response:
+    await inventory.delete_supplier(int(request.match_info["id"]))
+    return ok()
+
+
+@admin_only
+async def purchase_delete(request: web.Request) -> web.Response:
+    await inventory.delete_purchase(int(request.match_info["id"]), request["admin_id"])
+    return ok()
+
+
 @admin_only
 async def staff(request: web.Request) -> web.Response:
     return ok(staff=await db.get_staff(), admins=sorted(config.admin_ids))
@@ -1461,6 +1564,15 @@ def setup(app: web.Application) -> None:
     r.add_get("/api/admin/tickets", tickets_list)
     r.add_post("/api/admin/tickets/{id:\\d+}", ticket_decide)
     r.add_get("/api/admin/reviews", reviews)
+    r.add_delete("/api/admin/reviews/{id:\\d+}", review_delete)
+    r.add_delete("/api/admin/tickets/{id:\\d+}", ticket_delete)
+    r.add_patch("/api/admin/orders/{id:\\d+}", order_edit)
+    r.add_delete("/api/admin/orders/{id:\\d+}/chat/{mid:\\d+}", order_chat_delete)
+    r.add_delete("/api/admin/orders/{id:\\d+}/media/{mid:\\d+}", order_media_delete)
+    r.add_patch("/api/admin/customers/{id:\\d+}", customer_edit)
+    r.add_delete("/api/admin/customers/{id:\\d+}", customer_delete)
+    r.add_delete("/api/admin/suppliers/{id:\\d+}", supplier_delete)
+    r.add_delete("/api/admin/purchases/{id:\\d+}", purchase_delete)
     r.add_get("/api/admin/customers", customers)
     r.add_get("/api/admin/staff", staff)
     r.add_post("/api/admin/staff", staff_add)

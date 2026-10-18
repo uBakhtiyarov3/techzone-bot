@@ -693,7 +693,7 @@
         <div class="actions">
           ${o.can_return && !o.has_open_ticket ? `<button class="btn btn-white" data-act="return">${ico("return")}${T("returnOrder")}<small style="font-weight:500;opacity:.6">· ${T("returnUntil", { date: o.return_until })}</small></button>` : ""}
           <button class="btn btn-ghost glass" data-act="issue" ${o.has_open_ticket ? "disabled" : ""}>${ico("alert")}${T("issue")}</button>
-          ${o.status === "new" ? `<button class="btn btn-ghost" data-act="cancel" style="color:#ff7b72">${T("cancelOrder")}</button>` : ""}
+          ${o.can_cancel ? `<button class="btn btn-ghost" data-act="cancel" style="color:#ff7b72">${T("cancelOrder")}</button>` : ""}
         </div>`;
       const on = (name, fn) => { const el = view.querySelector(`[data-act="${name}"]`); el && el.addEventListener("click", fn); };
       on("cancel", () => confirmDo(T("cancelConfirm"), async () => {

@@ -229,8 +229,10 @@ T: dict[str, dict[str, str]] = {
     "repeat_btn": {"uz": "🔁 Qayta buyurtma berish", "ru": "🔁 Повторить заказ"},
     "back_orders": {"uz": "⬅️ Buyurtmalarim", "ru": "⬅️ Мои заказы"},
     "order_not_found": {"uz": "Buyurtma topilmadi", "ru": "Заказ не найден"},
-    "cancel_not_allowed": {"uz": "Buyurtma allaqachon qabul qilingan — bekor qilish uchun chatda yozing.",
-                           "ru": "Заказ уже принят — для отмены напишите в чат."},
+    "cancel_not_allowed": {"uz": "Buyurtma yig'ila boshlangan — endi bekor qilib bo'lmaydi. Qabul qilib olgach, "
+                                 "kerak bo'lsa «Qaytarish» tugmasidan foydalaning.",
+                           "ru": "Заказ уже собирается — отменить нельзя. После получения при необходимости "
+                                 "воспользуйтесь кнопкой «Вернуть»."},
     "order_cancelled_toast": {"uz": "Buyurtma bekor qilindi", "ru": "Заказ отменён"},
     "repeat_added": {"uz": "🔁 Oldingi buyurtma savatga qo'shildi (narxlar joriy).",
                      "ru": "🔁 Прошлый заказ добавлен в корзину (по текущим ценам)."},

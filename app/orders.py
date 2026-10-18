@@ -257,6 +257,13 @@ async def place_order(user_id: int, data: dict, raw_items) -> int:
     return order_id
 
 
+CUSTOMER_CANCEL_STATUSES = ("new", "accepted")  # yig'ish boshlangach mijoz bekor qila olmaydi
+
+
+def can_customer_cancel(order: dict) -> bool:
+    return order.get("status") in CUSTOMER_CANCEL_STATUSES
+
+
 async def cancel_order(order: dict, by_user: int | None, reason: str) -> list[int]:
     """Buyurtmani bekor qiladi va qoldiqni omborga qaytaradi. Qayta sotuvga chiqqan variantlar ro'yxati."""
     async with inventory.STOCK_LOCK:

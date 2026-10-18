@@ -410,13 +410,13 @@
             ${d.chat_open ? `<div class="btn-row" style="margin-top:10px;flex-wrap:nowrap"><input id="od-msg" placeholder="Mijozga xabar…"><label class="btn" title="Rasm">📷<input type="file" id="od-msg-photo" accept="image/*" hidden></label><button class="btn primary" id="od-send">Yuborish</button></div>`
               : '<p class="muted small">Buyurtma yakunlangan — chat yopilgan. Mijoz bilan telefon orqali bog\'laning yoki «Murojaatlar» bo\'limidan foydalaning.</p>'}</div>
           <div class="card glass"><h3>📸 Holat rasmlari</h3>
-            <div class="media-grid">${d.media.map((x) => `<a href="${esc(imgUrl(x.path))}" target="_blank" title="${esc(STATUS[x.status] || x.status)} ${esc(x.caption)}"><img src="${esc(imgUrl(x.path))}" alt=""></a>`).join("") || '<span class="muted small">Hali rasm yo\'q</span>'}</div>
+            <div class="media-grid">${d.media.map((x) => `<span class="mg-item"><a href="${esc(imgUrl(x.path))}" target="_blank" title="${esc(STATUS[x.status] || x.status)} ${esc(x.caption)}"><img src="${esc(imgUrl(x.path))}" alt=""></a><button class="mg-del" data-mdel="${x.id}" title="O'chirish">✕</button></span>`).join("") || '<span class="muted small">Hali rasm yo\'q</span>'}</div>
             <div class="row" style="margin-top:10px;align-items:end"><label class="f"><span>Rasm (mijozga botda yuboriladi)</span><input type="file" id="od-photo" accept="image/*"></label>
               <label class="f"><span>Izoh</span><input id="od-photo-cap" placeholder="Masalan: qadoqlandi"></label></div>
             <button class="btn sm" id="od-photo-send">📤 Yuklash va yuborish</button></div>
         </div>
         <div>
-          <div class="card glass"><h3>👤 Mijoz</h3>
+          <div class="card glass"><div class="card-head"><h3>👤 Mijoz</h3><button class="btn sm" id="od-edit">✏️ Tahrirlash</button></div>
             <div class="list-row"><span>Ism</span><b>${esc(o.customer_name)}</b></div>
             <div class="list-row"><span>Telefon</span><a href="tel:${esc(o.phone)}">${esc(phone(o.phone))}</a></div>
             <div class="list-row"><span>Olish usuli</span><span>${isPickup ? "🏬 Do'kondan" : "🚚 Yetkazib berish"}</span></div>
@@ -480,6 +480,27 @@
       const note = prompt("Rad etish sababi (mijozga yuboriladi):", "Summa hisobga tushmadi");
       if (note && note.trim().length >= 3) act(() => api(`orders/${id}/payment`, { method: "POST", body: { action: "reject", note: note.trim() } }), "Chek rad etildi, mijozga sabab yuborildi");
     };
+    $("#od-edit", m).onclick = () => {
+      const e = openModal(modalHead("✏️ " + esc(o.code) + " · mijoz ma'lumotlari") + `<label class="f"><span>Ism</span><input id="oe-name" maxlength="64" value="${esc(o.customer_name)}"></label>
+        <label class="f"><span>Telefon</span><input id="oe-phone" value="${esc(o.phone)}"></label>
+        ${isPickup ? "" : `<label class="f"><span>Manzil</span><textarea id="oe-addr" rows="2" maxlength="300">${esc(o.address)}</textarea></label>`}
+        <label class="f"><span>Izoh</span><textarea id="oe-comment" rows="2" maxlength="300">${esc(o.comment)}</textarea></label>
+        <div class="modal-foot"><span style="flex:1"></span><button class="btn" id="oe-back">Bekor</button><button class="btn primary" id="oe-save">💾 Saqlash</button></div>`);
+      $("#oe-back", e).onclick = () => { closeModal(); orderModal(id); };
+      $("#oe-save", e).onclick = async () => {
+        const body = { customer_name: $("#oe-name", e).value.trim(), phone: $("#oe-phone", e).value.trim(), comment: $("#oe-comment", e).value.trim() };
+        if (!isPickup) body.address = $("#oe-addr", e).value.trim();
+        if (await run(() => api("orders/" + id, { method: "PATCH", body }), "Saqlandi")) { closeModal(); orderModal(id); if (S.page === "orders") loadOrders(); }
+      };
+    };
+    $$("[data-mdel]", m).forEach((b) => (b.onclick = (ev) => {
+      ev.preventDefault();
+      if (confirm("Rasm o'chirilsinmi? (mijozga yuborilgan xabar Telegramda qoladi)")) act(() => api(`orders/${id}/media/${b.dataset.mdel}`, { method: "DELETE" }), "Rasm o'chirildi");
+    }));
+    m.addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-cdel]");
+      if (b && confirm("Xabar o'chirilsinmi? (Telegramdagi nusxasi qoladi)")) act(() => api(`orders/${id}/chat/${b.dataset.cdel}`, { method: "DELETE" }), "Xabar o'chirildi");
+    });
     const tc = $("#od-to-cash", m);
     if (tc) tc.onclick = () => {
       if (confirm(`${o.code}: to'lov usuli naqdga o'zgartirilsinmi? Mijozga xabar boradi va buyurtmani qabul qilish mumkin bo'ladi.`))
@@ -495,7 +516,7 @@
     }, 8000);
   }
   const chatHtml = (msgs) => msgs.map((x) => `<div class="msg ${x.sender}">${x.path ? `<a href="${esc(imgUrl(x.path))}" target="_blank"><img src="${esc(imgUrl(x.path))}" alt=""></a>` : ""}${esc(x.text)}
-    <small>${x.sender === "customer" ? "Mijoz" : esc(x.name || "Do'kon")} · ${esc(dt(x.at))}</small></div>`).join("") || '<span class="muted small">Xabarlar yo\'q</span>';
+    <small>${x.sender === "customer" ? "Mijoz" : esc(x.name || "Do'kon")} · ${esc(dt(x.at))} <button class="msg-del" data-cdel="${x.id}" title="O'chirish">✕</button></small></div>`).join("") || '<span class="muted small">Xabarlar yo\'q</span>';
   const scrollChat = (root) => { const b = $("#od-chat", root); if (b) b.scrollTop = b.scrollHeight; };
 
   // ================= MUROJAATLAR =================
@@ -508,7 +529,7 @@
         <span class="muted small">Mijoz bilan telefon orqali bog'laning, so'ng qaror qabul qiling — mijozga botda xabar boradi.</span></div>
       ${d.tickets.length ? d.tickets.map((t) => `<div class="card glass">
         <div class="card-head"><h3>${t.kind === "return" ? "↩️ Qaytarish arizasi" : "⚠️ Muammo xabari"} №${t.id} ${ticketBadge(t)}</h3>
-          <span class="muted small">${esc(dt(t.created_at))}</span></div>
+          <div class="btn-row"><span class="muted small">${esc(dt(t.created_at))}</span><button class="icon-btn" data-tdel="${t.id}" title="O'chirish">🗑</button></div></div>
         <div class="grid two"><div>
           <div class="list-row"><span>Buyurtma</span><a href="javascript:void 0" data-order="${t.order_id}">${esc(t.code)}</a></div>
           <div class="list-row"><span>Mijoz</span><b>${esc(t.customer_name)}</b></div>
@@ -523,6 +544,9 @@
               : `<button class="btn primary" data-tk="${t.id}:resolve:0">✅ Hal qilindi</button>`}</div>` : ""}</div></div></div>`).join("")
         : '<div class="card glass empty">Bu bo\'limda murojaat yo\'q</div>'}`;
     $$("[data-tt]", root).forEach((b) => (b.onclick = () => { S.ticketsTab = b.dataset.tt; route(); }));
+    $$("[data-tdel]", root).forEach((b) => (b.onclick = async () => {
+      if (confirm(`№${b.dataset.tdel} murojaat butunlay o'chirilsinmi?`) && await run(() => api("tickets/" + b.dataset.tdel, { method: "DELETE" }), "Murojaat o'chirildi")) { route(); poll(); }
+    }));
     $$("[data-order]", root).forEach((a) => (a.onclick = () => orderModal(a.dataset.order)));
     $$("[data-tk]", root).forEach((b) => (b.onclick = async () => {
       const [id, action, restock] = b.dataset.tk.split(":");
@@ -842,7 +866,8 @@
         <button class="btn primary" id="pu-save" style="margin-top:10px">✅ Kirimni saqlash (qoldiq oshadi)</button>
         <div class="hint">Tannarx o'rtacha og'irlik usulida qayta hisoblanadi va foydada ishlatiladi. Tugagan mahsulotga obuna bo'lgan mijozlarga "sotuvga chiqdi" xabari yuboriladi.</div></div>
       <div class="card glass"><div class="card-head"><h3>🏭 Yetkazib beruvchilar</h3><button class="btn sm" id="su-add">＋ Qo'shish</button></div>
-        ${d.suppliers.length ? `<table class="t">${d.suppliers.map((s) => `<tr><td><b>${esc(s.name)}</b><div class="muted small">${esc(s.phone)} ${esc(s.note)}</div></td><td class="right small">${s.purchases} ta kirim<br><b>${money(s.amount)}</b></td></tr>`).join("")}</table>` : '<div class="empty">Hali yo\'q</div>'}</div></div>
+        ${d.suppliers.length ? `<table class="t">${d.suppliers.map((s) => `<tr><td><b>${esc(s.name)}</b><div class="muted small">${esc(s.phone)} ${esc(s.note)}</div></td><td class="right small">${s.purchases} ta kirim<br><b>${money(s.amount)}</b></td>
+          <td class="right nowrap"><button class="icon-btn" data-sued="${s.id}" title="Tahrirlash">✏️</button><button class="icon-btn" data-sudel="${s.id}" title="O'chirish">🗑</button></td></tr>`).join("")}</table>` : '<div class="empty">Hali yo\'q</div>'}</div></div>
       <div class="card glass table-wrap"><h3>📜 Kirimlar tarixi</h3>${d.purchases.length ? `<table class="t"><tr><th>Hujjat</th><th>Sana</th><th>Yetkazib beruvchi</th><th class="right">Dona</th><th class="right">Summa</th><th>Izoh</th></tr>
         ${d.purchases.map((p) => `<tr class="click" data-pid="${p.id}"><td class="mono">${esc(p.code)}</td><td class="small">${esc(dt(p.created_at))}</td><td>${esc(p.supplier || "—")}</td>
           <td class="right">${p.units}</td><td class="right"><b>${money(p.total)}</b></td><td class="small">${esc(p.note)}</td></tr>`).join("")}</table>` : '<div class="empty">Hali kirim yo\'q</div>'}</div>`;
@@ -867,19 +892,30 @@
       const body = { supplier_id: $("#pu-sup", root).value ? +$("#pu-sup", root).value : null, note: $("#pu-note", root).value, items: rows };
       if (await run(() => api("purchases", { method: "POST", body }), "Kirim saqlandi, qoldiq oshdi")) route();
     };
-    $("#su-add", root).onclick = () => {
-      const m = openModal(modalHead("Yetkazib beruvchi") + `<label class="f"><span>Nomi *</span><input id="su-name"></label>
-        <label class="f"><span>Telefon</span><input id="su-phone"></label><label class="f"><span>Izoh</span><input id="su-note"></label>
+    const supplierModal = (s) => {
+      const m = openModal(modalHead(s ? "✏️ Yetkazib beruvchi" : "Yetkazib beruvchi") + `<label class="f"><span>Nomi *</span><input id="su-name" value="${esc(s ? s.name : "")}"></label>
+        <label class="f"><span>Telefon</span><input id="su-phone" value="${esc(s ? s.phone : "")}"></label><label class="f"><span>Izoh</span><input id="su-note" value="${esc(s ? s.note : "")}"></label>
         <div class="modal-foot"><span style="flex:1"></span><button class="btn" data-close>Bekor</button><button class="btn primary" id="su-save">💾 Saqlash</button></div>`);
       $("#su-save", m).onclick = async () => {
-        if (await run(() => api("suppliers", { method: "POST", body: { name: $("#su-name", m).value, phone: $("#su-phone", m).value, note: $("#su-note", m).value } }), "Qo'shildi")) { closeModal(); route(); }
+        const body = { name: $("#su-name", m).value, phone: $("#su-phone", m).value, note: $("#su-note", m).value };
+        if (await run(() => api(s ? "suppliers/" + s.id : "suppliers", { method: s ? "PATCH" : "POST", body }), "Saqlandi")) { closeModal(); route(); }
       };
     };
+    $("#su-add", root).onclick = () => supplierModal(null);
+    $$("[data-sued]", root).forEach((b) => (b.onclick = () => supplierModal(d.suppliers.find((x) => x.id === +b.dataset.sued))));
+    $$("[data-sudel]", root).forEach((b) => (b.onclick = async () => {
+      if (confirm("Yetkazib beruvchi o'chirilsinmi? Kirimlar tarixi saqlanadi.") && await run(() => api("suppliers/" + b.dataset.sudel, { method: "DELETE" }), "O'chirildi")) route();
+    }));
     $$("[data-pid]", root).forEach((tr) => (tr.onclick = async () => {
       const r = await run(() => api("purchases/" + tr.dataset.pid));
       if (r) openModal(modalHead("Kirim " + esc(r.purchase.code)) + `<p class="muted small">${esc(dt(r.purchase.created_at))} · ${esc(r.purchase.supplier || "—")} · ${esc(r.purchase.note)}</p>
         <table class="t"><tr><th>Mahsulot</th><th class="right">Soni</th><th class="right">Narx</th><th class="right">Summa</th></tr>${r.items.map((i) => `<tr><td>${esc(i.name)}</td><td class="right">${i.qty}</td><td class="right">${money(i.cost)}</td><td class="right">${money(i.qty * i.cost)}</td></tr>`).join("")}
-        <tr><td colspan="3"><b>Jami</b></td><td class="right"><b>${money(r.purchase.total)}</b></td></tr></table>`);
+        <tr><td colspan="3"><b>Jami</b></td><td class="right"><b>${money(r.purchase.total)}</b></td></tr></table>
+        <div class="modal-foot"><button class="btn danger" id="pu-del">🗑 Kirimni o'chirish</button><span class="muted small" style="flex:1">Mahsulotlar qoldig'i kirimdagi miqdorga kamayadi.</span><button class="btn" data-close>Yopish</button></div>`);
+      const del = r && $("#pu-del");
+      if (del) del.onclick = async () => {
+        if (confirm(`${r.purchase.code} kirimi o'chirilsinmi? Qoldiq kamayadi.`) && await run(() => api("purchases/" + tr.dataset.pid, { method: "DELETE" }), "Kirim o'chirildi, qoldiq qaytarildi")) { closeModal(); route(); }
+      };
     }));
   };
 
@@ -1153,11 +1189,15 @@
         <div class="card glass"><h3>Umumiy: ${d.total.count ? d.total.avg.toFixed(2) : "—"} ★ <span class="muted small">(${d.total.count} ta)</span></h3>${dist(d.total)}</div>
         <div class="card glass"><h3>Oxirgi 30 kun: ${d.month.count ? d.month.avg.toFixed(2) : "—"} ★ <span class="muted small">(${d.month.count} ta)</span></h3>${dist(d.month)}</div></div>
       <div class="card-head"><div class="tabs"><button data-low="0" class="${low === "0" ? "active" : ""}">Hammasi</button><button data-low="1" class="${low === "1" ? "active" : ""}">⚠️ Past baholar (1–3)</button></div></div>
-      <div class="card glass">${d.reviews.length ? `<table class="t"><tr><th>Baho</th><th>Izoh</th><th>Buyurtma</th><th>Mijoz</th><th>Sana</th></tr>
+      <div class="card glass">${d.reviews.length ? `<table class="t"><tr><th>Baho</th><th>Izoh</th><th>Buyurtma</th><th>Mijoz</th><th>Sana</th><th></th></tr>
         ${d.reviews.map((r) => `<tr><td class="yellow nowrap">${stars(r.rating)}</td><td>${esc(r.comment) || '<span class="muted">—</span>'}</td>
-          <td><a href="javascript:void 0" data-order="${r.order_id}">${esc(r.code)}</a></td><td>${esc(r.name || "")}</td><td class="nowrap small">${esc(dt(r.created_at))}</td></tr>`).join("")}</table>`
+          <td><a href="javascript:void 0" data-order="${r.order_id}">${esc(r.code)}</a></td><td>${esc(r.name || "")}</td><td class="nowrap small">${esc(dt(r.created_at))}</td>
+          <td class="right"><button class="icon-btn" data-rdel="${r.id}" title="O'chirish">🗑</button></td></tr>`).join("")}</table>`
         : '<div class="empty">Baholar yo\'q</div>'}</div>`;
     $$("[data-low]", root).forEach((b) => (b.onclick = () => { S.reviewsLow = b.dataset.low === "1"; route(); }));
+    $$("[data-rdel]", root).forEach((b) => (b.onclick = async () => {
+      if (confirm("Baho o'chirilsinmi? Reytingdan ham olib tashlanadi.") && await run(() => api("reviews/" + b.dataset.rdel, { method: "DELETE" }), "Baho o'chirildi")) route();
+    }));
     $$("[data-order]", root).forEach((a) => (a.onclick = () => orderModal(a.dataset.order)));
   };
 
@@ -1254,12 +1294,27 @@
   async function loadCustomers(q) {
     const d = await api("customers?q=" + encodeURIComponent(q));
     $("#cu-total").textContent = `Jami: ${d.total} · xarid qilganlar: ${d.buyers}`;
-    $("#cu-list").innerHTML = d.customers.length ? `<table class="t"><tr><th>Mijoz</th><th>Telefon</th><th>Hudud</th><th>Til</th><th class="right">Buyurtma</th><th class="right">Xarid</th><th>Oxirgi buyurtma</th></tr>
+    $("#cu-list").innerHTML = d.customers.length ? `<table class="t"><tr><th>Mijoz</th><th>Telefon</th><th>Hudud</th><th>Til</th><th class="right">Buyurtma</th><th class="right">Xarid</th><th>Oxirgi buyurtma</th><th></th></tr>
       ${d.customers.map((u) => `<tr><td><b>${esc(u.full_name || u.first_name || "—")}</b>${u.username ? ` <a href="https://t.me/${esc(u.username)}" target="_blank" rel="noopener">@${esc(u.username)}</a>` : ""}
         <div class="muted small">ID ${u.id}${u.role !== "user" ? ` · ${u.role === "manager" ? "👑 menejer" : "👷 xodim"}` : ""}${u.is_blocked ? ' · <span class="red">botni bloklagan</span>' : ""}</div></td>
         <td class="nowrap">${esc(phone(u.phone))}</td><td class="small">${esc(u.region || "")}</td><td>${u.lang === "ru" ? "🇷🇺" : "🇺🇿"}</td><td class="right">${u.orders}</td>
-        <td class="right nowrap">${money(u.spent)}</td><td class="small nowrap">${esc(dt(u.last_order))}</td></tr>`).join("")}</table>`
+        <td class="right nowrap">${money(u.spent)}</td><td class="small nowrap">${esc(dt(u.last_order))}</td>
+        <td class="right nowrap"><button class="icon-btn" data-cued="${u.id}" title="Tahrirlash">✏️</button>${u.role === "user" && !u.orders ? `<button class="icon-btn" data-cudel="${u.id}" title="O'chirish">🗑</button>` : ""}</td></tr>`).join("")}</table>`
       : '<div class="empty">Topilmadi</div>';
+    $$("[data-cued]").forEach((b) => (b.onclick = () => {
+      const u = d.customers.find((x) => x.id === +b.dataset.cued);
+      const m = openModal(modalHead("✏️ Mijoz · ID " + u.id) + `<label class="f"><span>Ism</span><input id="ce-name" maxlength="64" value="${esc(u.full_name || u.first_name || "")}"></label>
+        <label class="f"><span>Telefon</span><input id="ce-phone" value="${esc(u.phone || "")}" placeholder="+998 90 123 45 67"></label>
+        <label class="f"><span>Manzil</span><input id="ce-addr" maxlength="300" value="${esc(u.address || "")}"></label>
+        <div class="modal-foot"><span style="flex:1"></span><button class="btn" data-close>Bekor</button><button class="btn primary" id="ce-save">💾 Saqlash</button></div>`);
+      $("#ce-save", m).onclick = async () => {
+        const body = { full_name: $("#ce-name", m).value.trim(), phone: $("#ce-phone", m).value.trim(), address: $("#ce-addr", m).value.trim() };
+        if (await run(() => api("customers/" + u.id, { method: "PATCH", body }), "Saqlandi")) { closeModal(); loadCustomers($("#cu-q").value.trim()); }
+      };
+    }));
+    $$("[data-cudel]").forEach((b) => (b.onclick = async () => {
+      if (confirm("Mijoz o'chirilsinmi? (savati, sevimlilari va obunalari ham o'chadi)") && await run(() => api("customers/" + b.dataset.cudel, { method: "DELETE" }), "Mijoz o'chirildi")) loadCustomers($("#cu-q").value.trim());
+    }));
   }
 
   // ================= XODIMLAR =================

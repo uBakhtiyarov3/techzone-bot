@@ -212,3 +212,29 @@ async def pop_alerts(variant_id: int) -> list[int]:
     rows = await db.fetchall("SELECT user_id FROM stock_alerts WHERE variant_id = ?", variant_id)
     await db.execute("DELETE FROM stock_alerts WHERE variant_id = ?", variant_id)
     return [r["user_id"] for r in rows]
+
+
+async def delete_purchase(purchase_id: int, by_user: int | None = None) -> None:
+    """Kirimni o'chiradi va qoldiqni qaytaradi. Kirim mahsuloti allaqachon sotilgan bo'lsa — rad etadi."""
+    p = await db.fetchone("SELECT * FROM purchases WHERE id = ?", purchase_id)
+    if not p:
+        raise ValueError("Kirim topilmadi")
+    items = await db.fetchall("SELECT * FROM purchase_items WHERE purchase_id = ?", purchase_id)
+    async with STOCK_LOCK:
+        for it in items:
+            stock = await db.scalar("SELECT stock FROM variants WHERE id = ?", it["variant_id"])
+            if stock is not None and stock < it["qty"]:
+                raise ValueError(f"{it['name']}: omborda {stock} dona qolgan, kirimda {it['qty']} edi — "
+                                 "mahsulot sotilgan, kirimni o'chirib bo'lmaydi. Qoldiqni «Ombor» da to'g'rilang.")
+        for it in items:
+            await db.db().execute("UPDATE variants SET stock = stock - ? WHERE id = ?", (it["qty"], it["variant_id"]))
+            await _move(it["variant_id"], -it["qty"], "adjust", p["code"], "Kirim o'chirildi", by_user)
+        await db.db().execute("DELETE FROM purchase_items WHERE purchase_id = ?", (purchase_id,))
+        await db.db().execute("DELETE FROM purchases WHERE id = ?", (purchase_id,))
+        await db.db().commit()
+
+
+async def delete_supplier(supplier_id: int) -> None:
+    await db.db().execute("UPDATE purchases SET supplier_id = NULL WHERE supplier_id = ?", (supplier_id,))
+    await db.db().execute("DELETE FROM suppliers WHERE id = ?", (supplier_id,))
+    await db.db().commit()

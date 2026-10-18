@@ -29,10 +29,12 @@ from ..filters import Btn
 from ..i18n import both, money_l, stars, status_text, t, ticket_status
 from ..keyboards import ikb, main_kb, webapp_ready, webapp_url
 from ..notify import (
-    add_chat_and_relay, notify_new_order, notify_receipt, notify_restocked, notify_review, notify_ticket_new,
+    add_chat_and_relay, notify_customer_cancelled, notify_new_order, notify_receipt, notify_restocked, notify_review, notify_ticket_new,
     refresh_staff_messages, save_telegram_photo,
 )
-from ..orders import OrderError, cancel_order, normalize_phone, place_order, public_settings, quote
+from ..orders import (
+    OrderError, can_customer_cancel, cancel_order, normalize_phone, place_order, public_settings, quote,
+)
 from ..rich import Rich
 from ..roles import get_role, lang_of
 from ..utils import h, phone_fmt
@@ -1008,7 +1010,7 @@ async def order_detail_view(order: dict, lang: str) -> tuple[Rich, InlineKeyboar
         until = await tickets.return_until(order)
         rows.append([(t("return_btn", lang, date=until.strftime("%d.%m")), f"sh:rt:{code}")])
     rows.append([(t("issue_btn", lang), f"sh:is:{code}")])
-    if order["status"] == "new":
+    if can_customer_cancel(order):
         rows.append([(t("cancel_order_btn", lang), f"sh:oc:{order['code']}")])
     if order["status"] == "delivered" and not review:
         rows.append([(f"{n}⭐", f"rv:{order['id']}:{n}") for n in range(1, 6)])
@@ -1054,11 +1056,11 @@ async def order_cancel_cb(call: CallbackQuery, bot: Bot) -> None:
     order = await _own_order(call, lang)
     if not order:
         return
-    if order["status"] != "new":
+    if not can_customer_cancel(order):
         await call.answer(t("cancel_not_allowed", lang), show_alert=True)
         return
     restocked = await cancel_order(order, call.from_user.id, "Mijoz bekor qildi")
-    await refresh_staff_messages(bot, order["id"])
+    await notify_customer_cancelled(bot, order["id"])
     await notify_restocked(bot, restocked)
     await show(call, *await order_detail_view(await db.get_order(order["id"]), lang))
     await call.answer(t("order_cancelled_toast", lang))

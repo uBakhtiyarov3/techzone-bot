@@ -536,3 +536,14 @@ async def notify_pay_decision(bot: Bot, order: dict, accepted: bool = False) -> 
         await notify_status_change(bot, order["id"])
     else:
         await refresh_staff_messages(bot, order["id"])
+
+
+async def notify_customer_cancelled(bot: Bot, order_id: int) -> None:
+    """Mijoz bekor qildi: xodim kartalari yangilanadi, xodim va menejerlarga ogohlantirish
+    (to'langan karta buyurtmasida — pulni qaytarish eslatmasi bilan)."""
+    order = await db.get_order(order_id)
+    await refresh_staff_messages(bot, order_id)
+    text = f"❌ Mijoz <b>{order['code']}</b> buyurtmasini bekor qildi · {money(order['total'])}"
+    if order.get("payment_method") == "card" and order.get("pay_status") == "paid":
+        text += "\n\n💳 To'lov kartaga qilingan edi — mijozga pulni qaytaring."
+    await _send_many(bot, sorted(set(await staff_recipients()) | await manager_ids()), text)

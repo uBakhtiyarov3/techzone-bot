@@ -15,7 +15,7 @@ from .config import config
 from .i18n import status_text, t, web_texts
 from .notify import add_chat_and_relay, notify_new_order, notify_restocked, notify_review, order_eta, \
     refresh_staff_messages
-from .orders import OrderError, cancel_order, place_order, public_settings, quote
+from .orders import OrderError, can_customer_cancel, cancel_order, place_order, public_settings, quote
 from .utils import ACTIVE_STATUSES, STATUSES
 
 log = logging.getLogger(__name__)
@@ -170,6 +170,7 @@ async def order_json(order: dict, lang: str = "uz") -> dict:
         "unread": await chat.unread_count(order["id"], "customer"),
         "chat_open": tickets.chat_open(order),
         "can_return": await tickets.can_return(order),
+        "can_cancel": can_customer_cancel(order),
         "return_until": (until.strftime("%d.%m.%Y") if (until := await tickets.return_until(order)) else ""),
         "has_open_ticket": bool(await tickets.open_ticket(order["id"])),
         "tickets": [{"id": tk["id"], "kind": tk["kind"], "status": tk["status"], "note": tk["note"],
@@ -358,17 +359,19 @@ async def api_order(request: web.Request) -> web.Response:
 
 
 async def api_cancel_order(request: web.Request) -> web.Response:
-    """Mijoz faqat hali qabul qilinmagan (yangi) buyurtmani bekor qila oladi."""
+    """Mijoz buyurtmani yig'ish boshlanguncha (yangi yoki qabul qilingan) bekor qila oladi."""
     lang = user_lang(request)
     order = await _own_order(request)
     if not order:
         return api_error(t("order_not_found", lang), 404)
-    if order["status"] != "new":
+    if not can_customer_cancel(order):
         return api_error(t("cancel_not_allowed", lang))
     restocked = await cancel_order(order, request["user"]["id"], "Mijoz bekor qildi")
     bot = _bot(request)
     if bot:
-        asyncio.create_task(refresh_staff_messages(bot, order["id"]))
+        from .notify import notify_customer_cancelled
+
+        asyncio.create_task(notify_customer_cancelled(bot, order["id"]))
         asyncio.create_task(notify_restocked(bot, restocked))
     return web.json_response({"ok": True, "order": await order_json(await db.get_order(order["id"]), lang)})
 
