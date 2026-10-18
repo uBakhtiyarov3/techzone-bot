@@ -95,6 +95,13 @@
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
+  // Rasm o'lchamini yuklashdan oldin brauzerda aniqlaydi (4:3 tekshiruvi uchun)
+  const imageSize = (file) => new Promise((resolve) => {
+    const url = URL.createObjectURL(file), im = new Image();
+    im.onload = () => { resolve({ w: im.naturalWidth, h: im.naturalHeight }); URL.revokeObjectURL(url); };
+    im.onerror = () => { resolve(null); URL.revokeObjectURL(url); };
+    im.src = url;
+  });
   async function upload(file, kind = "product") {
     const fd = new FormData();
     fd.append("file", file, file.name || "image.jpg");
@@ -579,7 +586,7 @@
           <div class="spec-row muted small"><span>Nomi</span><span>Qiymat (uz)</span><span>Qiymat (ru)</span><span></span></div><div id="pe-specs"></div></div>
       </div><div>
         <div class="card glass"><h3>🖼 Galereya</h3><div class="imgs" id="pe-imgs"></div>
-          <div class="hint">Birinchi rasm — asosiy. Rang tanlangan rasm shu rangdagi variant tanlanganda ko'rsatiladi. Rasm kesilmaydi — kvadratga oq fon bilan joylanadi (1200×1200).</div></div>
+          <div class="hint">Birinchi rasm — asosiy. Rang tanlangan rasm shu rangdagi variant tanlanganda ko'rsatiladi. <b>Rasm formati: 4:3</b> (masalan 1200×900 yoki 1600×1200), oq yoki och fon. Boshqa nisbatdagi rasm kesilmaydi — 4:3 ga oq fon bilan joylanadi.</div></div>
         <div class="card glass"><h3>🏷 Belgilar va chegirma</h3>
           <div class="btn-row">${Object.entries(BADGES).map(([k, v]) => `<label class="check"><input type="checkbox" data-badge="${k}" ${p && p.badges.includes(k) ? "checked" : ""}>${v}</label>`).join("")}</div>
           <div class="row" style="margin-top:8px"><label class="f"><span>Chegirma, %</span><input id="pe-disc" type="number" min="0" max="90" value="${p ? p.discount_percent : 0}"></label>
@@ -635,13 +642,16 @@
       $("#pe-imgs", m).innerHTML = st.images.map((img, i) => `<div class="img-tile">${i === 0 ? '<span class="main-tag">Asosiy</span>' : ""}<img src="${esc(imgUrl(img.path))}" alt="">
         <div class="ops">${colors().length ? `<select data-ic="${i}"><option value="">umumiy</option>${colors().map((c) => `<option ${img.color === c ? "selected" : ""}>${esc(c)}</option>`).join("")}</select>` : ""}
           <button data-il="${i}" title="Chapga">◀</button><button data-ix="${i}" title="O'chirish">✕</button></div></div>`).join("")
-        + '<label class="drop" id="pe-drop">＋ Rasm yuklash<br>yoki shu yerga tashlang<input type="file" accept="image/*" multiple hidden id="pe-file"></label>';
+        + '<label class="drop" id="pe-drop"><span>＋ Rasm yuklash<br><b>4:3 · 1200×900</b><br>yoki shu yerga tashlang</span><input type="file" accept="image/*" multiple hidden id="pe-file"></label>';
       $$("[data-ic]", m).forEach((x) => (x.onchange = () => (st.images[+x.dataset.ic].color = x.value)));
       $$("[data-il]", m).forEach((x) => (x.onclick = () => { const i = +x.dataset.il; if (i > 0) { [st.images[i - 1], st.images[i]] = [st.images[i], st.images[i - 1]]; drawImgs(); } }));
       $$("[data-ix]", m).forEach((x) => (x.onclick = () => { st.images.splice(+x.dataset.ix, 1); drawImgs(); }));
       const drop = $("#pe-drop", m), file = $("#pe-file", m);
       const addFiles = async (files) => {
         for (const f of [...files].slice(0, 15 - st.images.length)) {
+          const size = await imageSize(f);
+          if (size && Math.abs(size.w / size.h - 4 / 3) > 0.03
+              && !confirm(`"${f.name}" — ${size.w}×${size.h}, 4:3 emas.\n\nMahsulot rasmlari 4:3 nisbatda bo'lishi kerak (masalan 1200×900).\nBaribir yuklansinmi? Rasm kesilmaydi, chetlariga oq fon qo'shiladi.`)) continue;
           toast("⏳ Yuklanmoqda: " + f.name);
           const path = await run(() => upload(f, "product"));
           if (path) st.images.push({ path, color: "" });

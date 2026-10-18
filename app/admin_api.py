@@ -519,11 +519,13 @@ async def demo_delete(request: web.Request) -> web.Response:
 # ====================== rasm yuklash ======================
 
 MAX_UPLOAD = 10 * 1024 * 1024
-PRODUCT_SIZE = 1200   # mahsulot rasmi: 1200×1200 kvadrat, oq fon
+PRODUCT_W, PRODUCT_H = 1200, 900   # mahsulot rasmi: 4:3, oq fon (kesilmaydi)
+PHOTO_MAX = 1600                   # chek, chat va boshqa rasmlar: nisbati saqlanadi
 
 
 def process_image(raw: bytes, kind: str = "product") -> tuple[bytes, str, dict]:
-    """Rasmni tayyorlaydi. product — kesmasdan kvadratga joylaydi (oq fon), brand/logo — PNG shaffofligi bilan."""
+    """Rasmni tayyorlaydi. product — kesmasdan 4:3 ga joylaydi (oq fon), photo — nisbati saqlanadi,
+    brand/logo — PNG shaffofligi bilan."""
     from PIL import Image, ImageOps
 
     img = Image.open(io.BytesIO(raw))
@@ -544,15 +546,22 @@ def process_image(raw: bytes, kind: str = "product") -> tuple[bytes, str, dict]:
         bg.paste(rgba, mask=rgba.split()[-1])
         img = bg
     img = img.convert("RGB")
-    if abs(ow / oh - 1) > 0.03:
-        warnings.append(f"Rasm {ow}×{oh} — kesilmadi, kvadratga oq fon bilan joylandi.")
-    side = max(img.size)
-    canvas = Image.new("RGB", (side, side), (255, 255, 255))
-    canvas.paste(img, ((side - img.width) // 2, (side - img.height) // 2))
-    if side > PRODUCT_SIZE:
-        canvas = canvas.resize((PRODUCT_SIZE, PRODUCT_SIZE), Image.LANCZOS)
-    if max(ow, oh) < 800:
-        warnings.append(f"Rasm kichik ({ow}×{oh}). Sifatli ko'rinishi uchun kamida 1200×1200 tavsiya qilinadi.")
+    if kind == "photo":
+        img.thumbnail((PHOTO_MAX, PHOTO_MAX), Image.LANCZOS)
+        out = io.BytesIO()
+        img.save(out, "JPEG", quality=86, optimize=True, progressive=True)
+        return out.getvalue(), "jpg", {"width": img.width, "height": img.height, "original": [ow, oh],
+                                       "warnings": warnings}
+    if abs(ow / oh - 4 / 3) > 0.03:
+        warnings.append(f"Rasm {ow}×{oh} — 4:3 emas. Kesilmadi, 4:3 ga oq fon bilan joylandi.")
+    w, h = img.size
+    cw, ch = (w, round(w * 3 / 4)) if w / h >= 4 / 3 else (round(h * 4 / 3), h)
+    canvas = Image.new("RGB", (cw, ch), (255, 255, 255))
+    canvas.paste(img, ((cw - w) // 2, (ch - h) // 2))
+    if cw > PRODUCT_W:
+        canvas = canvas.resize((PRODUCT_W, PRODUCT_H), Image.LANCZOS)
+    if ow < 800:
+        warnings.append(f"Rasm kichik ({ow}×{oh}). Sifatli ko'rinishi uchun kamida 1200×900 tavsiya qilinadi.")
     out = io.BytesIO()
     canvas.save(out, "JPEG", quality=86, optimize=True, progressive=True)
     return out.getvalue(), "jpg", {"width": canvas.width, "height": canvas.height, "original": [ow, oh],
