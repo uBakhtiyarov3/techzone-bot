@@ -103,6 +103,19 @@ CREATE TABLE IF NOT EXISTS stock_moves (
     at TEXT NOT NULL
 );
 
+-- qoldiq partiyalari (FIFO): har bir kirim o'z tannarxi bilan; sotuvda eng eski partiyadan olinadi
+CREATE TABLE IF NOT EXISTS stock_batches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    variant_id INTEGER NOT NULL,
+    qty INTEGER NOT NULL,                       -- partiyada qolgan dona
+    cost INTEGER NOT NULL,                      -- bir dona tannarxi
+    source TEXT NOT NULL DEFAULT '',            -- purchase | initial | adjust | cancel | return
+    ref TEXT NOT NULL DEFAULT '',               -- kirim yoki buyurtma kodi
+    purchase_item_id INTEGER,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_batches_variant ON stock_batches(variant_id, id);
+
 CREATE TABLE IF NOT EXISTS suppliers (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -392,6 +405,9 @@ async def init_db(path: str, seed_demo: bool = True) -> None:
     await seed.seed_regions()
     if seed_demo:
         await seed.seed_demo_catalog()
+    from . import inventory
+
+    await inventory.sync_all_batches()  # eski bazalar: mavjud qoldiq bitta "boshlang'ich" partiya bo'ladi
     await reload_texts()
 
 

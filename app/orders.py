@@ -248,11 +248,13 @@ async def place_order(user_id: int, data: dict, raw_items) -> int:
         }, q["items"])
         order = await db.get_order(order_id)
         try:
-            await inventory.reserve(q["items"], order["code"], user_id)
+            unit_cost = await inventory.reserve(q["items"], order["code"], user_id)
         except inventory.OutOfStock as e:
             await db.delete_order(order_id)
             item = next(i for i in q["items"] if i["variant_id"] == e.variant_id)
             raise OrderError("e_stock", 409, item=item["name"], left=e.left)
+        for vid, cost in unit_cost.items():  # foyda FIFO partiyadagi haqiqiy tannarxdan hisoblanadi
+            await db.execute("UPDATE order_items SET cost = ? WHERE order_id = ? AND variant_id = ?", cost, order_id, vid)
     await db.update_user_profile(user_id, name, phone, address, region["id"] if region else None)
     return order_id
 

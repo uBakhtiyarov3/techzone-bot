@@ -841,7 +841,7 @@
       <div class="card-head"><div class="btn-row"><input id="sk-q" class="search-in" placeholder="🔍 Mahsulot, brend yoki SKU" value="${esc(S.stockQ)}">
         <label class="check"><input type="checkbox" id="sk-low" ${S.stockLow ? "checked" : ""}><span id="sk-low-l">Faqat kam qolganlar</span></label></div>
         <div class="btn-row"><button class="btn" id="sk-csv">📥 CSV</button><button class="btn primary" data-goto="purchases">🛒 Kirim qilish</button></div></div>
-      <div class="hint" style="margin:-6px 0 12px">Narx, tannarx, SKU, qoldiq va "sotuvda" ni shu yerda o'zgartirib <b>💾</b> bosing. Rasm, nom va xarakteristikalar — <b>✏️</b> (mahsulot muharriri).</div>
+      <div class="hint" style="margin:-6px 0 12px">Narx, tannarx, SKU, qoldiq va "sotuvda" ni shu yerda o'zgartirib <b>💾</b> bosing. Tannarx <b>partiyalar bo'yicha (FIFO)</b>: har bir kirim o'z narxida saqlanadi, avval eng eski partiya sotiladi va foyda shu narxdan hisoblanadi. Rasm, nom va xarakteristikalar — <b>✏️</b> (mahsulot muharriri).</div>
       <div class="card glass table-wrap" id="sk-list"></div>`;
     let tmr;
     $("#sk-q", root).oninput = (e) => { clearTimeout(tmr); tmr = setTimeout(() => { S.stockQ = e.target.value.trim(); loadStock(); }, 350); };
@@ -858,12 +858,13 @@
       <div class="kpi glass"><span>💵 Tannarx bo'yicha</span><b>${money(d.value.cost)}</b></div>
       <div class="kpi glass"><span>🏷 Sotuv narxida</span><b>${money(d.value.retail)}</b><small>potensial foyda ${money(d.value.retail - d.value.cost)}</small></div>`;
     $("#sk-low-l").textContent = `Faqat kam qolganlar (≤ ${d.low})`;
-    list.innerHTML = `<table class="t"><tr><th>Mahsulot</th><th>SKU</th><th class="right">Narx</th><th class="right">Tannarx</th><th class="right">Qoldiq</th><th>Sotuvda</th><th></th></tr>
+    list.innerHTML = `<table class="t"><tr><th>Mahsulot</th><th>SKU</th><th class="right">Narx</th><th class="right" title="FIFO: avval eng eski partiya sotiladi">Tannarx (partiyalar)</th><th class="right">Qoldiq</th><th>Sotuvda</th><th></th></tr>
       ${d.items.map((v) => `<tr data-row="${v.id}"><td><b>${esc(v.name)}</b>${v.vals.length ? `<div class="muted small">${esc(v.vals.join(", "))}</div>` : ""}<div class="muted small">${esc(v.brand || "")} · ${esc(v.category || "")}
           ${!v.p_active ? ' · <span class="red">mahsulot yashirin</span>' : ""}</div></td>
-        <td><input class="stock-in sm" data-f="sku" value="${esc(v.sku)}"></td>
+        <td><input class="stock-in" data-f="sku" value="${esc(v.sku)}"></td>
         <td class="right"><input class="stock-in" type="number" min="0" step="1000" data-f="price" value="${v.price}"></td>
-        <td class="right"><input class="stock-in" type="number" min="0" step="1000" data-f="cost" value="${v.cost}"></td>
+        <td class="right"><input class="stock-in" type="number" min="0" step="1000" data-f="cost" value="${v.cost}" title="O'zgartirilsa qolgan barcha partiyalarga qo'llanadi">
+          ${v.batches.length > 1 || (v.batches[0] && v.batches[0].cost !== v.cost) ? `<div class="batches">${v.batches.map((b, i) => `<div class="${i === 0 ? "cur" : ""}">${b.qty} × ${money(b.cost)}</div>`).join("")}</div>` : ""}</td>
         <td class="right"><input class="stock-in sm" type="number" min="0" data-f="stock" value="${v.stock}"><div><span class="badge ${v.stock <= 0 ? "red" : v.stock <= d.low ? "yellow" : "green"}">${v.stock <= 0 ? "tugagan" : v.stock + " dona"}</span></div></td>
         <td><label class="switch"><input type="checkbox" data-f="is_active" ${v.is_active ? "checked" : ""}><i></i></label></td>
         <td class="right nowrap"><button class="btn sm primary" data-save="${v.id}" title="Saqlash">💾</button>
@@ -924,7 +925,7 @@
         <table class="t vt" id="pu-items"></table>
         <div class="list-row"><b>Jami</b><b id="pu-total">0 so'm</b></div>
         <button class="btn primary" id="pu-save" style="margin-top:10px">✅ Kirimni saqlash (qoldiq oshadi)</button>
-        <div class="hint">Tannarx o'rtacha og'irlik usulida qayta hisoblanadi va foydada ishlatiladi. Tugagan mahsulotga obuna bo'lgan mijozlarga "sotuvga chiqdi" xabari yuboriladi.</div></div>
+        <div class="hint">Har bir kirim o'z kelish narxi bilan alohida partiya bo'ladi (FIFO): avval eski partiya sotiladi, foyda haqiqiy tannarxdan hisoblanadi. Tugagan mahsulotga obuna bo'lgan mijozlarga "sotuvga chiqdi" xabari yuboriladi.</div></div>
       <div class="card glass"><div class="card-head"><h3>🏭 Yetkazib beruvchilar</h3><button class="btn sm" id="su-add">＋ Qo'shish</button></div>
         ${d.suppliers.length ? `<table class="t">${d.suppliers.map((s) => `<tr><td><b>${esc(s.name)}</b><div class="muted small">${esc(s.phone)} ${esc(s.note)}</div></td><td class="right small">${s.purchases} ta kirim<br><b>${money(s.amount)}</b></td>
           <td class="right nowrap"><button class="icon-btn" data-sued="${s.id}" title="Tahrirlash">✏️</button><button class="icon-btn" data-sudel="${s.id}" title="O'chirish">🗑</button></td></tr>`).join("")}</table>` : '<div class="empty">Hali yo\'q</div>'}</div></div>

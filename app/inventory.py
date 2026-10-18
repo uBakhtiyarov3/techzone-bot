@@ -27,14 +27,95 @@ async def _move(variant_id: int, delta: int, reason: str, ref: str = "", note: s
     )
 
 
+# ---------------- partiyalar (FIFO) ----------------
+
+async def _add_batch(variant_id: int, qty: int, cost: int, source: str, ref: str = "",
+                     purchase_item_id: int | None = None) -> None:
+    if qty <= 0:
+        return
+    await db.db().execute(
+        "INSERT INTO stock_batches(variant_id, qty, cost, source, ref, purchase_item_id, created_at)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?)", (variant_id, qty, int(cost), source, ref, purchase_item_id, now_str()))
+    await _refresh_cost(variant_id)
+
+
+async def _take(variant_id: int, qty: int) -> int:
+    """Eng eski partiyalardan qty dona oladi va ularning umumiy tannarxini qaytaradi."""
+    total, need = 0, qty
+    rows = await db.fetchall("SELECT id, qty, cost FROM stock_batches WHERE variant_id = ? AND qty > 0 ORDER BY id",
+                             variant_id)
+    for b in rows:
+        if need <= 0:
+            break
+        n = min(need, b["qty"])
+        total += n * b["cost"]
+        need -= n
+        if n == b["qty"]:
+            await db.db().execute("DELETE FROM stock_batches WHERE id = ?", (b["id"],))
+        else:
+            await db.db().execute("UPDATE stock_batches SET qty = qty - ? WHERE id = ?", (n, b["id"]))
+    if need > 0:  # partiya yetmasa (bo'lmasligi kerak) — joriy tannarx bilan
+        total += need * (await db.scalar("SELECT cost FROM variants WHERE id = ?", variant_id) or 0)
+    await _refresh_cost(variant_id)
+    return total
+
+
+async def _refresh_cost(variant_id: int) -> None:
+    """variants.cost — keyingi sotiladigan (eng eski) partiyaning tannarxi."""
+    cost = await db.scalar("SELECT cost FROM stock_batches WHERE variant_id = ? AND qty > 0 ORDER BY id LIMIT 1",
+                           variant_id)
+    if cost is not None:
+        await db.db().execute("UPDATE variants SET cost = ? WHERE id = ?", (cost, variant_id))
+
+
+async def batches(variant_ids: list[int] | None = None) -> dict[int, list[dict]]:
+    sql, args = "SELECT * FROM stock_batches WHERE qty > 0", []
+    if variant_ids is not None:
+        if not variant_ids:
+            return {}
+        sql += f" AND variant_id IN ({','.join('?' * len(variant_ids))})"
+        args = list(variant_ids)
+    out: dict[int, list[dict]] = {}
+    for b in await db.fetchall(sql + " ORDER BY id", *args):
+        out.setdefault(b["variant_id"], []).append(b)
+    return out
+
+
+async def sync_all_batches() -> None:
+    """Partiyalar yig'indisi qoldiqqa teng bo'lishini ta'minlaydi (eski bazalar va qo'lda o'zgarishlar uchun)."""
+    rows = await db.fetchall(
+        "SELECT v.id, v.stock, v.cost, COALESCE((SELECT SUM(qty) FROM stock_batches b WHERE b.variant_id = v.id"
+        " AND b.qty > 0), 0) AS bq FROM variants v")
+    for r in rows:
+        stock = max(0, r["stock"])
+        if r["bq"] < stock:
+            await _add_batch(r["id"], stock - r["bq"], r["cost"], "initial")
+        elif r["bq"] > stock:
+            await _take(r["id"], r["bq"] - stock)
+    await db.db().commit()
+
+
+async def set_cost(variant_id: int, cost: int) -> None:
+    """Tannarxni qo'lda tuzatish: qolgan barcha partiyalarga qo'llanadi."""
+    await db.db().execute("UPDATE stock_batches SET cost = ? WHERE variant_id = ? AND qty > 0", (cost, variant_id))
+    await db.db().execute("UPDATE variants SET cost = ? WHERE id = ?", (cost, variant_id))
+    await db.db().commit()
+
+
 async def adjust(variant_id: int, delta: int, reason: str = "adjust", ref: str = "", note: str = "",
                  by_user: int | None = None) -> bool:
-    """Qoldiqni o'zgartiradi (manfiyga tushmaydi). Mahsulot qayta sotuvga chiqsa True."""
+    """Qoldiqni o'zgartiradi (manfiyga tushmaydi). Mahsulot qayta sotuvga chiqsa True.
+    Ko'payganda joriy tannarx bilan yangi partiya, kamayganda eng eski partiyadan olinadi."""
     before = await db.scalar("SELECT stock FROM variants WHERE id = ?", variant_id) or 0
     delta = max(delta, -before)
     if not delta:
         return False
     await db.db().execute("UPDATE variants SET stock = stock + ? WHERE id = ?", (delta, variant_id))
+    if delta > 0:
+        cost = await db.scalar("SELECT cost FROM variants WHERE id = ?", variant_id) or 0
+        await _add_batch(variant_id, delta, cost, "adjust", ref)
+    else:
+        await _take(variant_id, -delta)
     await _move(variant_id, delta, reason, ref, note, by_user)
     await db.db().commit()
     return before <= 0 < before + delta
@@ -46,9 +127,11 @@ async def set_stock(variant_id: int, stock: int, note: str = "", by_user: int | 
     return await adjust(variant_id, max(0, stock) - before, "adjust", note=note or "Inventarizatsiya", by_user=by_user)
 
 
-async def reserve(items: list[dict], ref: str, by_user: int | None) -> None:
-    """Buyurtma uchun qoldiqni ayiradi. Biror pozitsiya yetmasa hech narsa o'zgarmaydi (OutOfStock)."""
+async def reserve(items: list[dict], ref: str, by_user: int | None) -> dict[int, int]:
+    """Buyurtma uchun qoldiqni ayiradi. Biror pozitsiya yetmasa hech narsa o'zgarmaydi (OutOfStock).
+    {variant_id: bir dona tannarxi} qaytaradi — FIFO bo'yicha olingan partiyalardan."""
     done: list[tuple[int, int]] = []
+    unit_cost: dict[int, int] = {}
     try:
         for it in items:
             cur = await db.db().execute(
@@ -59,11 +142,13 @@ async def reserve(items: list[dict], ref: str, by_user: int | None) -> None:
                 left = await db.scalar("SELECT stock FROM variants WHERE id = ?", it["variant_id"]) or 0
                 raise OutOfStock(it["variant_id"], left)
             done.append((it["variant_id"], it["qty"]))
+            unit_cost[it["variant_id"]] = round(await _take(it["variant_id"], it["qty"]) / it["qty"])
             await _move(it["variant_id"], -it["qty"], "order", ref, by_user=by_user)
         await db.db().commit()
     except Exception:
         await db.db().rollback()
         raise
+    return unit_cost
 
 
 async def release(order_id: int, ref: str, by_user: int | None, reason: str = "cancel") -> list[int]:
@@ -76,6 +161,7 @@ async def release(order_id: int, ref: str, by_user: int | None, reason: str = "c
         if before is None:
             continue
         await db.db().execute("UPDATE variants SET stock = stock + ? WHERE id = ?", (it["qty"], it["variant_id"]))
+        await _add_batch(it["variant_id"], it["qty"], it["cost"], reason, ref)  # sotilgan tannarxi bilan qaytadi
         await _move(it["variant_id"], it["qty"], reason, ref, by_user=by_user)
         if before <= 0:
             restocked.append(it["variant_id"])
@@ -87,7 +173,7 @@ async def release(order_id: int, ref: str, by_user: int | None, reason: str = "c
 
 async def create_purchase(items: list[dict], supplier_id: int | None = None, note: str = "",
                           by_user: int | None = None) -> tuple[int, list[int]]:
-    """Kirim: qoldiq oshadi, tannarx o'rtacha og'irlik bilan qayta hisoblanadi.
+    """Kirim: qoldiq oshadi, har bir pozitsiya o'z kelish narxi bilan alohida partiya bo'ladi (FIFO).
     items: [{variant_id, qty, cost}]. (purchase_id, qayta sotuvga chiqqan variantlar) qaytaradi."""
     code = f"K-{secrets.randbelow(900_000) + 100_000}"
     total = sum(i["qty"] * i["cost"] for i in items)
@@ -103,14 +189,14 @@ async def create_purchase(items: list[dict], supplier_id: int | None = None, not
             " WHERE v.id = ?", it["variant_id"])
         if not v:
             continue
-        stock = max(0, v["stock"])
-        new_cost = (stock * v["cost"] + it["qty"] * it["cost"]) // (stock + it["qty"])
-        await db.db().execute("UPDATE variants SET stock = stock + ?, cost = ? WHERE id = ?",
-                              (it["qty"], new_cost, it["variant_id"]))
-        await db.db().execute(
+        await db.db().execute("UPDATE variants SET stock = stock + ? WHERE id = ?", (it["qty"], it["variant_id"]))
+        if v["stock"] <= 0:  # tugagan tovarga yangi kirim — tannarx darhol yangi narx
+            await db.db().execute("UPDATE variants SET cost = ? WHERE id = ?", (it["cost"], it["variant_id"]))
+        cur_item = await db.db().execute(
             "INSERT INTO purchase_items(purchase_id, variant_id, name, qty, cost) VALUES (?, ?, ?, ?, ?)",
             (purchase_id, it["variant_id"], _variant_title(v), it["qty"], it["cost"]),
         )
+        await _add_batch(it["variant_id"], it["qty"], it["cost"], "purchase", code, cur_item.lastrowid)
         await _move(it["variant_id"], it["qty"], "purchase", code, note, by_user)
         if v["stock"] <= 0:
             restocked.append(it["variant_id"])
@@ -172,17 +258,22 @@ async def stock_list(q: str = "", only_low: bool = False) -> list[dict]:
         sql += " AND v.is_active = 1 AND p.is_active = 1 AND v.stock <= ?"
         args.append(int(await db.get_setting("low_stock") or 3))
     rows = await db.fetchall(sql + " ORDER BY p.sort, p.id, v.sort, v.id", *args)
+    by_variant = await batches([r["id"] for r in rows])
     for r in rows:
         r["vals"] = json.loads(r["vals"] or "[]")
+        r["batches"] = [{"qty": b["qty"], "cost": b["cost"], "source": b["source"], "ref": b["ref"],
+                         "at": b["created_at"]} for b in by_variant.get(r["id"], [])]
     return rows
 
 
 async def stock_value() -> dict:
     row = await db.fetchone(
-        "SELECT COALESCE(SUM(v.stock), 0) units, COALESCE(SUM(v.stock * v.cost), 0) cost,"
-        " COALESCE(SUM(v.stock * v.price), 0) retail FROM variants v JOIN products p ON p.id = v.product_id"
-        " WHERE v.is_deleted = 0 AND p.is_deleted = 0 AND v.stock > 0")
-    return dict(row)
+        "SELECT COALESCE(SUM(v.stock), 0) units, COALESCE(SUM(v.stock * v.price), 0) retail FROM variants v"
+        " JOIN products p ON p.id = v.product_id WHERE v.is_deleted = 0 AND p.is_deleted = 0 AND v.stock > 0")
+    cost = await db.scalar(
+        "SELECT COALESCE(SUM(b.qty * b.cost), 0) FROM stock_batches b JOIN variants v ON v.id = b.variant_id"
+        " JOIN products p ON p.id = v.product_id WHERE b.qty > 0 AND v.is_deleted = 0 AND p.is_deleted = 0")
+    return {**dict(row), "cost": cost}
 
 
 async def moves(variant_id: int | None = None, limit: int = 200) -> list[dict]:
@@ -222,12 +313,14 @@ async def delete_purchase(purchase_id: int, by_user: int | None = None) -> None:
     items = await db.fetchall("SELECT * FROM purchase_items WHERE purchase_id = ?", purchase_id)
     async with STOCK_LOCK:
         for it in items:
-            stock = await db.scalar("SELECT stock FROM variants WHERE id = ?", it["variant_id"])
-            if stock is not None and stock < it["qty"]:
-                raise ValueError(f"{it['name']}: omborda {stock} dona qolgan, kirimda {it['qty']} edi — "
-                                 "mahsulot sotilgan, kirimni o'chirib bo'lmaydi. Qoldiqni «Ombor» da to'g'rilang.")
+            left = await db.scalar("SELECT COALESCE(SUM(qty), 0) FROM stock_batches WHERE purchase_item_id = ?", it["id"])
+            if left < it["qty"]:
+                raise ValueError(f"{it['name']}: shu kirimdan {it['qty'] - left} dona allaqachon sotilgan — "
+                                 "kirimni o'chirib bo'lmaydi. Qoldiqni «Ombor» da to'g'rilang.")
         for it in items:
             await db.db().execute("UPDATE variants SET stock = stock - ? WHERE id = ?", (it["qty"], it["variant_id"]))
+            await db.db().execute("DELETE FROM stock_batches WHERE purchase_item_id = ?", (it["id"],))
+            await _refresh_cost(it["variant_id"])
             await _move(it["variant_id"], -it["qty"], "adjust", p["code"], "Kirim o'chirildi", by_user)
         await db.db().execute("DELETE FROM purchase_items WHERE purchase_id = ?", (purchase_id,))
         await db.db().execute("DELETE FROM purchases WHERE id = ?", (purchase_id,))

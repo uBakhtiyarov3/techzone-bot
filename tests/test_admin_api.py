@@ -117,10 +117,13 @@ async def test_purchase_and_stock(client):
     assert r.status == 200
     v2 = await products.get_variant(v["id"])
     assert v2["stock"] == 10 and v2["cost"] == 450_000
-    # o'rtacha tannarx
+    # FIFO: yangi narxdagi kirim alohida partiya, joriy tannarx — eng eski partiya
     await client.post("/api/admin/purchases", headers=hdr,
                       json={"items": [{"variant_id": v["id"], "qty": 10, "cost": 550_000}]})
-    assert (await products.get_variant(v["id"]))["cost"] == 500_000
+    assert (await products.get_variant(v["id"]))["cost"] == 450_000
+    item = next(x for x in (await (await client.get("/api/admin/stock?q=Anker", headers=hdr)).json())["items"]
+                if x["id"] == v["id"])
+    assert [(b["qty"], b["cost"]) for b in item["batches"]] == [(10, 450_000), (10, 550_000)]
     data = await (await client.get("/api/admin/purchases", headers=hdr)).json()
     assert data["purchases"][0]["units"] == 10 and data["suppliers"][0]["purchases"] == 1
     # inventarizatsiya
@@ -128,6 +131,8 @@ async def test_purchase_and_stock(client):
     assert (await r.json())["variant"]["stock"] == 15
     r = await client.post(f"/api/admin/stock/{v['id']}", headers=hdr, json={"delta": -2})
     assert (await r.json())["variant"]["stock"] == 13
+    batches = (await inventory.batches([v["id"]]))[v["id"]]
+    assert [(x["qty"], x["cost"]) for x in batches] == [(3, 450_000), (10, 550_000)]  # kamayish eskisidan
     moves = (await (await client.get(f"/api/admin/moves?variant_id={v['id']}", headers=hdr)).json())["moves"]
     assert [m["reason"] for m in moves][:4] == ["adjust", "adjust", "purchase", "purchase"]
     low = (await (await client.get("/api/admin/stock?low=1", headers=hdr)).json())["items"]
@@ -258,3 +263,24 @@ async def test_texts_and_upload(client):
     form.add_field("kind", "brand")
     d = await (await client.post("/api/admin/upload", headers=hdr, data=form)).json()
     assert d["path"].endswith(".png") and d["width"] == 400
+
+
+
+async def test_fifo_cost_on_sale_and_cancel(client):
+    hdr = await admin_headers(client)
+    v = await variant_of("Anker PowerCore 20000")
+    for qty, cost in ((3, 450_000), (10, 550_000)):
+        await client.post("/api/admin/purchases", headers=hdr, json={"items": [{"variant_id": v["id"], "qty": qty, "cost": cost}]})
+    r = await client.post("/api/orders", headers=H(91), json={
+        "name": "Ali", "phone": "+998901234567", "order_type": "pickup", "payment_method": "cash",
+        "items": [{"variant_id": v["id"], "qty": 4}]})
+    o = (await r.json())["order"]
+    items = await db.get_order_items(o["id"])
+    assert items[0]["cost"] == (3 * 450_000 + 550_000) // 4  # 3 tasi eski, 1 tasi yangi partiyadan
+    assert (await products.get_variant(v["id"]))["cost"] == 550_000  # eski partiya tugadi
+    value = (await (await client.get("/api/admin/stock", headers=hdr)).json())["value"]
+    assert value["cost"] >= 9 * 550_000
+    # bekor qilinsa — sotilgan tannarxi bilan omborga qaytadi
+    await client.post(f"/api/admin/orders/{o['id']}/status", headers=hdr, json={"status": "cancelled", "reason": "test"})
+    b = (await inventory.batches([v["id"]]))[v["id"]]
+    assert sum(x["qty"] for x in b) == 13 and (await products.get_variant(v["id"]))["stock"] == 13

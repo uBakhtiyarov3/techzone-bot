@@ -76,7 +76,7 @@ Qolgan hamma narsa admin paneldan o'zgartiriladi. Batafsil: [`docs/REBRAND.md`](
 - **Xaridlar (kirim):**
   - yetkazib beruvchilar;
   - kirim hujjatlari;
-  - tannarx o'rtacha og'irlik usulida hisoblanadi;
+  - tannarx partiyalar bo'yicha (FIFO): har bir kirim o'z narxida, avval eski partiya sotiladi;
   - mahsulot sotuvga qaytganda obuna bo'lgan mijozlarga xabar boradi.
 
 **Marketing:** promo-kodlar; rassilka (rasm va "Katalog" tugmasi bilan).

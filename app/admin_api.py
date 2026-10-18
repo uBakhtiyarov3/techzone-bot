@@ -645,7 +645,9 @@ async def variant_update(request: web.Request) -> web.Response:
         fields["sku"] = _str(data, "sku", 40)
     if "is_active" in data:
         fields["is_active"] = 1 if data["is_active"] else 0
-    await db.update_row("variants", vid, fields, {"price", "cost", "sku", "is_active"})
+    if "cost" in fields:
+        await inventory.set_cost(vid, fields.pop("cost"))
+    await db.update_row("variants", vid, fields, {"price", "sku", "is_active"})
     return ok(variant=await products.get_variant(vid))
 
 
