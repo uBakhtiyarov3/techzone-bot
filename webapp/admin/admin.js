@@ -1284,22 +1284,29 @@
   // ================= MIJOZLAR =================
   PAGES.customers = async (root) => {
     if (!$("#cu-list", root)) {
-      root.innerHTML = `<div class="card-head"><input id="cu-q" class="search-in" placeholder="🔍 ID, @username, telefon yoki ism"><span class="muted small" id="cu-total"></span></div>
+      root.innerHTML = `<div class="card-head"><div class="btn-row" style="flex:1"><input id="cu-q" class="search-in" placeholder="🔍 ID, @username, telefon yoki ism">
+          <div class="tabs" id="cu-tabs"><button data-cb="0" class="active">Hammasi</button><button data-cb="1">🚫 Bloklanganlar</button></div></div><span class="muted small" id="cu-total"></span></div>
         <div class="card glass table-wrap" id="cu-list"></div>`;
       let tmr;
       $("#cu-q", root).oninput = (e) => { clearTimeout(tmr); tmr = setTimeout(() => loadCustomers(e.target.value.trim()), 350); };
+      $$("#cu-tabs button", root).forEach((b) => (b.onclick = () => {
+        S.custBanned = b.dataset.cb === "1";
+        $$("#cu-tabs button", root).forEach((x) => x.classList.toggle("active", x === b));
+        loadCustomers($("#cu-q").value.trim());
+      }));
     }
     await loadCustomers("");
   };
   async function loadCustomers(q) {
-    const d = await api("customers?q=" + encodeURIComponent(q));
-    $("#cu-total").textContent = `Jami: ${d.total} · xarid qilganlar: ${d.buyers}`;
+    const d = await api("customers?q=" + encodeURIComponent(q) + (S.custBanned ? "&banned=1" : ""));
+    $("#cu-total").textContent = `Jami: ${d.total} · xarid qilganlar: ${d.buyers} · bloklangan: ${d.banned}`;
     $("#cu-list").innerHTML = d.customers.length ? `<table class="t"><tr><th>Mijoz</th><th>Telefon</th><th>Hudud</th><th>Til</th><th class="right">Buyurtma</th><th class="right">Xarid</th><th>Oxirgi buyurtma</th><th></th></tr>
       ${d.customers.map((u) => `<tr><td><b>${esc(u.full_name || u.first_name || "—")}</b>${u.username ? ` <a href="https://t.me/${esc(u.username)}" target="_blank" rel="noopener">@${esc(u.username)}</a>` : ""}
-        <div class="muted small">ID ${u.id}${u.role !== "user" ? ` · ${u.role === "manager" ? "👑 menejer" : "👷 xodim"}` : ""}${u.is_blocked ? ' · <span class="red">botni bloklagan</span>' : ""}</div></td>
+        <div class="muted small">ID ${u.id}${u.role !== "user" ? ` · ${u.role === "manager" ? "👑 menejer" : "👷 xodim"}` : ""}${u.is_blocked ? ' · <span class="red">botni bloklagan</span>' : ""}</div>
+        ${u.banned ? `<span class="badge red">🚫 Bloklangan</span>${u.ban_reason ? ` <span class="muted small">${esc(u.ban_reason)}</span>` : ""}` : ""}</td>
         <td class="nowrap">${esc(phone(u.phone))}</td><td class="small">${esc(u.region || "")}</td><td>${u.lang === "ru" ? "🇷🇺" : "🇺🇿"}</td><td class="right">${u.orders}</td>
         <td class="right nowrap">${money(u.spent)}</td><td class="small nowrap">${esc(dt(u.last_order))}</td>
-        <td class="right nowrap"><button class="icon-btn" data-cued="${u.id}" title="Tahrirlash">✏️</button>${u.role === "user" && !u.orders ? `<button class="icon-btn" data-cudel="${u.id}" title="O'chirish">🗑</button>` : ""}</td></tr>`).join("")}</table>`
+        <td class="right nowrap">${u.role === "user" ? `<button class="icon-btn" data-ban="${u.id}:${u.banned ? 0 : 1}" title="${u.banned ? "Blokdan chiqarish" : "Bloklash"}">${u.banned ? "✅" : "🚫"}</button>` : ""}<button class="icon-btn" data-cued="${u.id}" title="Tahrirlash">✏️</button>${u.role === "user" && !u.orders ? `<button class="icon-btn" data-cudel="${u.id}" title="O'chirish">🗑</button>` : ""}</td></tr>`).join("")}</table>`
       : '<div class="empty">Topilmadi</div>';
     $$("[data-cued]").forEach((b) => (b.onclick = () => {
       const u = d.customers.find((x) => x.id === +b.dataset.cued);
@@ -1311,6 +1318,16 @@
         const body = { full_name: $("#ce-name", m).value.trim(), phone: $("#ce-phone", m).value.trim(), address: $("#ce-addr", m).value.trim() };
         if (await run(() => api("customers/" + u.id, { method: "PATCH", body }), "Saqlandi")) { closeModal(); loadCustomers($("#cu-q").value.trim()); }
       };
+    }));
+    $$("[data-ban]").forEach((b) => (b.onclick = async () => {
+      const [uid, ban] = b.dataset.ban.split(":");
+      let reason = "";
+      if (ban === "1") {
+        reason = prompt("Bloklash sababi (mijozga ko'rsatiladi, ixtiyoriy):", "");
+        if (reason === null) return;
+      } else if (!confirm("Mijoz blokdan chiqarilsinmi?")) return;
+      if (await run(() => api(`customers/${uid}/ban`, { method: "POST", body: { banned: ban === "1", reason: reason.trim() } }),
+        ban === "1" ? "Bloklandi — bot va Mini App unga yopildi" : "Blokdan chiqarildi")) loadCustomers($("#cu-q").value.trim());
     }));
     $$("[data-cudel]").forEach((b) => (b.onclick = async () => {
       if (confirm("Mijoz o'chirilsinmi? (savati, sevimlilari va obunalari ham o'chadi)") && await run(() => api("customers/" + b.dataset.cudel, { method: "DELETE" }), "Mijoz o'chirildi")) loadCustomers($("#cu-q").value.trim());

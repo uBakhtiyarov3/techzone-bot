@@ -1178,20 +1178,41 @@ async def reviews(request: web.Request) -> web.Response:
 @admin_only
 async def customers(request: web.Request) -> web.Response:
     q = request.query.get("q", "").strip().lstrip("@")
-    sql = ("SELECT u.id, u.first_name, u.username, u.full_name, u.phone, u.address, u.lang, u.role, u.is_blocked,"
+    sql = ("SELECT u.id, u.first_name, u.username, u.full_name, u.phone, u.address, u.lang, u.role, u.is_blocked, u.banned, u.ban_reason,"
            " u.created_at, r.name AS region, COUNT(o.id) AS orders,"
            " COALESCE(SUM(CASE WHEN o.status='delivered' THEN o.total END), 0) AS spent,"
            " MAX(o.created_at) AS last_order FROM users u LEFT JOIN orders o ON o.user_id = u.id"
            " LEFT JOIN regions r ON r.id = u.region_id")
     args: list = []
+    where = []
     if q:
-        sql += " WHERE CAST(u.id AS TEXT) = ? OR lower(u.username) = lower(?) OR u.phone LIKE ? OR u.full_name LIKE ?" \
-               " OR u.first_name LIKE ?"
+        where.append("(CAST(u.id AS TEXT) = ? OR lower(u.username) = lower(?) OR u.phone LIKE ? OR u.full_name LIKE ?"
+                     " OR u.first_name LIKE ?)")
         args = [q, q, f"%{re.sub(r'[^0-9]', '', q) or q}%", f"%{q}%", f"%{q}%"]
+    if request.query.get("banned") == "1":
+        where.append("u.banned = 1")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
     rows = await db.fetchall(sql + " GROUP BY u.id ORDER BY spent DESC, u.id DESC LIMIT 200", *args)
     total = await db.scalar("SELECT COUNT(*) FROM users")
     buyers = await db.scalar("SELECT COUNT(DISTINCT user_id) FROM orders WHERE status = 'delivered'")
-    return ok(customers=rows, total=total, buyers=buyers)
+    banned = await db.scalar("SELECT COUNT(*) FROM users WHERE banned = 1")
+    return ok(customers=rows, total=total, buyers=buyers, banned=banned)
+
+
+@admin_only
+async def customer_ban(request: web.Request) -> web.Response:
+    """Bloklash / blokdan chiqarish: {banned: bool, reason}."""
+    uid = int(request.match_info["id"])
+    user = await db.get_user(uid)
+    if not user:
+        return err("Topilmadi", 404)
+    data = await _body(request)
+    ban = bool(data.get("banned"))
+    if ban and (user["role"] != "user" or uid in config.admin_ids):
+        return err("Xodim yoki menejerni bloklab bo'lmaydi — avval «Xodimlar» dan olib tashlang")
+    await db.set_banned(uid, ban, _str(data, "reason", 200) if ban else "")
+    return ok()
 
 
 # ---------------- tahrirlash va o'chirish (faqat menejer) ----------------
@@ -1571,6 +1592,7 @@ def setup(app: web.Application) -> None:
     r.add_delete("/api/admin/orders/{id:\\d+}/media/{mid:\\d+}", order_media_delete)
     r.add_patch("/api/admin/customers/{id:\\d+}", customer_edit)
     r.add_delete("/api/admin/customers/{id:\\d+}", customer_delete)
+    r.add_post("/api/admin/customers/{id:\\d+}/ban", customer_ban)
     r.add_delete("/api/admin/suppliers/{id:\\d+}", supplier_delete)
     r.add_delete("/api/admin/purchases/{id:\\d+}", purchase_delete)
     r.add_get("/api/admin/customers", customers)

@@ -85,6 +85,9 @@ async def auth_middleware(request: web.Request, handler):
         await db.set_lang(tg_user.id, norm_lang(tg_user.language_code))
         user = await db.get_user(tg_user.id)
     request["user"] = user
+    reason = await db.is_banned(user["id"])
+    if reason is not None and user["id"] not in config.admin_ids:
+        return api_error(t("banned", user.get("lang") or "uz", reason=f" {reason}" if reason else ""), 403)
     return await handler(request)
 
 

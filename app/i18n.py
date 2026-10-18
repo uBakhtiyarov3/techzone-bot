@@ -189,6 +189,8 @@ T: dict[str, dict[str, str]] = {
                          "ru": "❌ Чек по заказу <b>{code}</b> отклонён.\n\n<b>Причина:</b> {note}\n\nВы можете отправить правильный чек повторно."},
     "pay_switched_cash": {"uz": "💵 <b>{code}</b> buyurtmasi uchun to'lov usuli <b>naqd</b>ga o'zgartirildi. To'lovni buyurtmani olganda qilasiz.",
                           "ru": "💵 Способ оплаты заказа <b>{code}</b> изменён на <b>наличные</b>. Оплатите при получении."},
+    "banned": {"uz": "🚫 Sizning akkauntingiz do'kon tomonidan bloklangan.{reason}",
+               "ru": "🚫 Ваш аккаунт заблокирован магазином.{reason}"},
     "pay_await": {"uz": "⏳ Chek kutilmoqda", "ru": "⏳ Ожидается чек"},
     "pay_review": {"uz": "🧾 Chek tekshirilmoqda", "ru": "🧾 Чек проверяется"},
     "pay_paid": {"uz": "✅ To'landi", "ru": "✅ Оплачено"},

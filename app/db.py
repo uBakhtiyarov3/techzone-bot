@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS users (
     lang TEXT NOT NULL DEFAULT '',
     role TEXT NOT NULL DEFAULT 'user',          -- user | staff | manager
     is_blocked INTEGER NOT NULL DEFAULT 0,      -- botni bloklagan
+    banned INTEGER NOT NULL DEFAULT 0,          -- admin bloklagan: bot va Mini App ishlamaydi
+    ban_reason TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL,
     last_active TEXT
 );
@@ -325,6 +327,8 @@ CREATE INDEX IF NOT EXISTS idx_tickets_order ON tickets(order_id);
 
 # Kelajakdagi yangi ustunlar shu yerga: (jadval, ustun, ta'rif) — eski bazalar ham buzilmasdan yangilanadi
 MIGRATIONS: list[tuple[str, str, str]] = [
+    ("users", "banned", "INTEGER NOT NULL DEFAULT 0"),
+    ("users", "ban_reason", "TEXT NOT NULL DEFAULT ''"),
     ("orders", "pay_status", "TEXT NOT NULL DEFAULT ''"),
     ("orders", "pay_receipt", "TEXT NOT NULL DEFAULT ''"),
     ("orders", "pay_note", "TEXT NOT NULL DEFAULT ''"),
@@ -580,8 +584,18 @@ async def set_blocked(user_id: int, blocked: bool) -> None:
     await execute("UPDATE users SET is_blocked=? WHERE id=?", int(blocked), user_id)
 
 
+async def set_banned(user_id: int, banned: bool, reason: str = "") -> None:
+    await execute("UPDATE users SET banned = ?, ban_reason = ? WHERE id = ?", int(banned), reason if banned else "", user_id)
+
+
+async def is_banned(user_id: int) -> str | None:
+    """Bloklangan bo'lsa sababi ('' ham bo'lishi mumkin), aks holda None."""
+    row = await fetchone("SELECT banned, ban_reason FROM users WHERE id = ?", user_id)
+    return (row["ban_reason"] or "") if row and row["banned"] else None
+
+
 async def all_user_ids() -> list[int]:
-    rows = await fetchall("SELECT id FROM users WHERE is_blocked = 0")
+    rows = await fetchall("SELECT id FROM users WHERE is_blocked = 0 AND banned = 0")
     return [r["id"] for r in rows]
 
 

@@ -2,6 +2,7 @@
 from app import chat, db, inventory, products
 from app.orders import place_order
 from tests.conftest import H, admin_headers, variant_of
+from tests.test_bot_flows import env  # noqa: F401
 
 
 async def make_order(uid: int, status: str = "new") -> dict:
@@ -87,3 +88,39 @@ async def test_purchase_and_supplier_delete(client):
     await inventory.set_stock(v["id"], 1, None)
     r = await client.delete(f"/api/admin/purchases/{pid2}", headers=hdr)
     assert r.status == 400 and "sotilgan" in (await r.json())["error"]
+
+
+async def test_admin_bans_customer(client):
+    hdr = await admin_headers(client)
+    assert (await client.get("/api/bootstrap", headers=H(85))).status == 200
+    r = await client.post("/api/admin/customers/85/ban", headers=hdr, json={"banned": True, "reason": "Spam"})
+    assert r.status == 200
+    r = await client.get("/api/bootstrap", headers=H(85))
+    assert r.status == 403 and "bloklangan" in (await r.json())["error"] and "Spam" in (await r.json())["error"]
+    lst = await (await client.get("/api/admin/customers?banned=1", headers=hdr)).json()
+    assert [u["id"] for u in lst["customers"]] == [85] and lst["banned"] == 1
+    assert 85 not in await db.all_user_ids()  # rassilkaga ham tushmaydi
+    # xodimni bloklab bo'lmaydi
+    await db.upsert_user(86, "X", None, None)
+    await db.set_role(86, "staff")
+    assert (await client.post("/api/admin/customers/86/ban", headers=hdr, json={"banned": True})).status == 400
+    await client.post("/api/admin/customers/85/ban", headers=hdr, json={"banned": False})
+    assert (await client.get("/api/bootstrap", headers=H(85))).status == 200
+
+
+async def test_banned_user_ignored_by_bot(env):
+    from tests.test_bot_flows import CUSTOMER, click, send, setup_people
+    bot, dp, s = env
+    await setup_people(bot, dp)
+    await db.set_banned(CUSTOMER, True, "Qoidabuzarlik")
+    s.calls.clear()
+    await send(bot, dp, CUSTOMER, "/start")
+    assert any("bloklangan" in x and "Qoidabuzarlik" in x for x in s.texts(CUSTOMER))
+    assert not any("Assalomu" in x for x in s.texts(CUSTOMER))
+    s.calls.clear()
+    await click(bot, dp, CUSTOMER, "sh:cat:1:0:0")
+    assert any(type(c).__name__ == "AnswerCallbackQuery" and c.show_alert for c in s.calls)
+    await db.set_banned(CUSTOMER, False)
+    s.calls.clear()
+    await send(bot, dp, CUSTOMER, "/start")
+    assert not any("bloklangan" in x for x in s.texts(CUSTOMER))
