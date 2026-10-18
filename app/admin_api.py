@@ -630,6 +630,40 @@ async def stock_set(request: web.Request) -> web.Response:
 
 
 @admin_only
+async def variant_update(request: web.Request) -> web.Response:
+    """Ombor sahifasidan tez tahrirlash: narx, tannarx, SKU, sotuvda/yo'q."""
+    vid = int(request.match_info["id"])
+    if not await products.get_variant(vid):
+        return err("Variant topilmadi", 404)
+    data = await _body(request)
+    fields: dict = {}
+    if "price" in data:
+        fields["price"] = _int(data, "price", 0, 10_000_000_000, "Narx")
+    if "cost" in data:
+        fields["cost"] = _int(data, "cost", 0, 10_000_000_000, "Tannarx")
+    if "sku" in data:
+        fields["sku"] = _str(data, "sku", 40)
+    if "is_active" in data:
+        fields["is_active"] = 1 if data["is_active"] else 0
+    await db.update_row("variants", vid, fields, {"price", "cost", "sku", "is_active"})
+    return ok(variant=await products.get_variant(vid))
+
+
+@admin_only
+async def variant_delete(request: web.Request) -> web.Response:
+    vid = int(request.match_info["id"])
+    v = await products.get_variant(vid)
+    if not v:
+        return err("Variant topilmadi", 404)
+    left = await db.scalar("SELECT COUNT(*) FROM variants WHERE product_id = ? AND is_deleted = 0 AND id != ?",
+                           v["product_id"], vid)
+    if not left:
+        return err("Bu mahsulotning yagona varianti — butun mahsulotni «Mahsulotlar» bo'limidan o'chiring")
+    await db.execute("UPDATE variants SET is_deleted = 1, is_active = 0 WHERE id = ?", vid)
+    return ok()
+
+
+@admin_only
 async def moves(request: web.Request) -> web.Response:
     vid = int(request.query["variant_id"]) if request.query.get("variant_id", "").isdigit() else None
     rows = await inventory.moves(vid)
@@ -1553,6 +1587,8 @@ def setup(app: web.Application) -> None:
     r.add_post("/api/admin/upload", upload)
     r.add_get("/api/admin/stock", stock)
     r.add_post("/api/admin/stock/{id:\\d+}", stock_set)
+    r.add_patch("/api/admin/variants/{id:\\d+}", variant_update)
+    r.add_delete("/api/admin/variants/{id:\\d+}", variant_delete)
     r.add_get("/api/admin/moves", moves)
     r.add_get("/api/admin/purchases", purchases)
     r.add_post("/api/admin/purchases", purchase_create)

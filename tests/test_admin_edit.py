@@ -124,3 +124,17 @@ async def test_banned_user_ignored_by_bot(env):
     s.calls.clear()
     await send(bot, dp, CUSTOMER, "/start")
     assert not any("bloklangan" in x for x in s.texts(CUSTOMER))
+
+
+async def test_variant_quick_edit_and_delete(client):
+    hdr = await admin_headers(client)
+    v = await variant_of("iPhone 15", "Qora", "128 GB")
+    r = await client.patch(f"/api/admin/variants/{v['id']}", headers=hdr,
+                           json={"price": 10_500_000, "cost": 9_000_000, "sku": "IP15-B128", "is_active": False})
+    d = (await r.json())["variant"]
+    assert (d["price"], d["cost"], d["sku"], d["is_active"]) == (10_500_000, 9_000_000, "IP15-B128", 0)
+    assert (await client.patch(f"/api/admin/variants/{v['id']}", headers=hdr, json={"price": -1})).status == 400
+    assert (await client.delete(f"/api/admin/variants/{v['id']}", headers=hdr)).status == 200
+    assert (await products.get_variant(v["id"]))["is_deleted"] == 1
+    only = await variant_of("Samsung 25W quvvatlagich")  # yagona variant
+    assert (await client.delete(f"/api/admin/variants/{only['id']}", headers=hdr)).status == 400

@@ -95,6 +95,27 @@
     setTimeout(() => URL.revokeObjectURL(url), 5000);
   }
 
+  // Telegram ichida (Mini App) brauzerning confirm/prompt oynalari ishlamaydi — o'zimizning dialog
+  function uiDialog(text, withInput, value) {
+    return new Promise((resolve) => {
+      const wrap = document.createElement("div");
+      wrap.className = "dlg-backdrop";
+      wrap.innerHTML = `<div class="dlg glass"><p class="dlg-text"></p>${withInput ? '<input class="dlg-in">' : ""}
+        <div class="btn-row dlg-btns"><button class="btn" data-dlg="0">Bekor</button><button class="btn primary" data-dlg="1">${withInput ? "OK" : "Ha"}</button></div></div>`;
+      $(".dlg-text", wrap).textContent = text;
+      const input = $(".dlg-in", wrap);
+      if (input) input.value = value || "";
+      const done = (ok) => { wrap.remove(); document.removeEventListener("keydown", onKey, true); resolve(withInput ? (ok ? input.value : null) : ok); };
+      const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); done(false); } else if (e.key === "Enter") { e.preventDefault(); done(true); } };
+      wrap.addEventListener("click", (e) => { const b = e.target.closest("[data-dlg]"); if (b) done(b.dataset.dlg === "1"); else if (e.target === wrap) done(false); });
+      document.addEventListener("keydown", onKey, true);
+      document.body.appendChild(wrap);
+      (input || $('[data-dlg="1"]', wrap)).focus();
+    });
+  }
+  const uiConfirm = (text) => uiDialog(text, false);
+  const uiPrompt = (text, value) => uiDialog(text, true, value);
+
   // Rasm o'lchamini yuklashdan oldin brauzerda aniqlaydi (3:4 tekshiruvi uchun)
   const imageSize = (file) => new Promise((resolve) => {
     const url = URL.createObjectURL(file), im = new Image();
@@ -160,12 +181,12 @@
   ];
   const toolbarHtml = (target) => `<div class="toolbar" data-target="${target}">` +
     TOOLS.map(([t, label, title]) => `<button type="button" data-tag="${t}" title="${title}">${label}</button>`).join("") + "</div>";
-  function wrapSelection(ta, tag) {
+  async function wrapSelection(ta, tag) {
     const { selectionStart: a, selectionEnd: b, value } = ta;
     const sel = value.slice(a, b) || "matn";
     let open = `<${tag}>`;
     if (tag === "a") {
-      const url = prompt("Havola manzili (https://...)", "https://");
+      const url = await uiPrompt("Havola manzili (https://...)", "https://");
       if (!url || !/^(https?|tg):\/\/\S+$/.test(url)) return;
       open = `<a href="${url.replace(/"/g, "%22")}">`;
     }
@@ -448,9 +469,9 @@
     const act = async (fn, msg) => { if (await run(fn, msg)) reopen(); };
     if (o.next && !o.pay_block) $("#od-next", m).onclick = () => act(() => api(`orders/${id}/status`, { method: "POST", body: { status: o.next[0] } }), "Holat yangilandi, mijozga xabar yuborildi");
     const c = $("#od-cancel", m);
-    if (c) c.onclick = () => { const reason = prompt("Bekor qilish sababi (mijozga yuboriladi):", "Mahsulot omborda qolmagan"); if (reason) act(() => api(`orders/${id}/status`, { method: "POST", body: { status: "cancelled", reason } }), "Bekor qilindi"); };
+    if (c) c.onclick = async () => { const reason = await uiPrompt("Bekor qilish sababi (mijozga yuboriladi):", "Mahsulot omborda qolmagan"); if (reason) act(() => api(`orders/${id}/status`, { method: "POST", body: { status: "cancelled", reason } }), "Bekor qilindi"); };
     $("#od-del", m).onclick = async () => {
-      if (confirm(`${o.code} butunlay o'chirilsinmi? Statistikadan ham o'chadi.`) && await run(() => api("orders/" + id, { method: "DELETE" }), "O'chirildi")) { closeModal(); route(); }
+      if (await uiConfirm(`${o.code} butunlay o'chirilsinmi? Statistikadan ham o'chadi.`) && await run(() => api("orders/" + id, { method: "DELETE" }), "O'chirildi")) { closeModal(); route(); }
     };
     $("#od-serial", m).onclick = () => {
       const serials = Object.fromEntries($$("[data-serial]", m).map((x) => [x.dataset.serial, x.value]));
@@ -476,8 +497,8 @@
     };
     const pok = $("#od-pay-ok", m), pno = $("#od-pay-no", m);
     if (pok) pok.onclick = () => act(() => api(`orders/${id}/payment`, { method: "POST", body: { action: "approve" } }), "To'lov tasdiqlandi, mijozga xabar yuborildi");
-    if (pno) pno.onclick = () => {
-      const note = prompt("Rad etish sababi (mijozga yuboriladi):", "Summa hisobga tushmadi");
+    if (pno) pno.onclick = async () => {
+      const note = await uiPrompt("Rad etish sababi (mijozga yuboriladi):", "Summa hisobga tushmadi");
       if (note && note.trim().length >= 3) act(() => api(`orders/${id}/payment`, { method: "POST", body: { action: "reject", note: note.trim() } }), "Chek rad etildi, mijozga sabab yuborildi");
     };
     $("#od-edit", m).onclick = () => {
@@ -493,17 +514,17 @@
         if (await run(() => api("orders/" + id, { method: "PATCH", body }), "Saqlandi")) { closeModal(); orderModal(id); if (S.page === "orders") loadOrders(); }
       };
     };
-    $$("[data-mdel]", m).forEach((b) => (b.onclick = (ev) => {
+    $$("[data-mdel]", m).forEach((b) => (b.onclick = async (ev) => {
       ev.preventDefault();
-      if (confirm("Rasm o'chirilsinmi? (mijozga yuborilgan xabar Telegramda qoladi)")) act(() => api(`orders/${id}/media/${b.dataset.mdel}`, { method: "DELETE" }), "Rasm o'chirildi");
+      if (await uiConfirm("Rasm o'chirilsinmi? (mijozga yuborilgan xabar Telegramda qoladi)")) act(() => api(`orders/${id}/media/${b.dataset.mdel}`, { method: "DELETE" }), "Rasm o'chirildi");
     }));
-    m.addEventListener("click", (ev) => {
+    m.addEventListener("click", async (ev) => {
       const b = ev.target.closest("[data-cdel]");
-      if (b && confirm("Xabar o'chirilsinmi? (Telegramdagi nusxasi qoladi)")) act(() => api(`orders/${id}/chat/${b.dataset.cdel}`, { method: "DELETE" }), "Xabar o'chirildi");
+      if (b && await uiConfirm("Xabar o'chirilsinmi? (Telegramdagi nusxasi qoladi)")) act(() => api(`orders/${id}/chat/${b.dataset.cdel}`, { method: "DELETE" }), "Xabar o'chirildi");
     });
     const tc = $("#od-to-cash", m);
-    if (tc) tc.onclick = () => {
-      if (confirm(`${o.code}: to'lov usuli naqdga o'zgartirilsinmi? Mijozga xabar boradi va buyurtmani qabul qilish mumkin bo'ladi.`))
+    if (tc) tc.onclick = async () => {
+      if (await uiConfirm(`${o.code}: to'lov usuli naqdga o'zgartirilsinmi? Mijozga xabar boradi va buyurtmani qabul qilish mumkin bo'ladi.`))
         act(() => api(`orders/${id}/to-cash`, { method: "POST" }), "To'lov naqdga o'zgartirildi");
     };
     const gt = $("[data-goto-t]", m);
@@ -545,14 +566,14 @@
         : '<div class="card glass empty">Bu bo\'limda murojaat yo\'q</div>'}`;
     $$("[data-tt]", root).forEach((b) => (b.onclick = () => { S.ticketsTab = b.dataset.tt; route(); }));
     $$("[data-tdel]", root).forEach((b) => (b.onclick = async () => {
-      if (confirm(`№${b.dataset.tdel} murojaat butunlay o'chirilsinmi?`) && await run(() => api("tickets/" + b.dataset.tdel, { method: "DELETE" }), "Murojaat o'chirildi")) { route(); poll(); }
+      if (await uiConfirm(`№${b.dataset.tdel} murojaat butunlay o'chirilsinmi?`) && await run(() => api("tickets/" + b.dataset.tdel, { method: "DELETE" }), "Murojaat o'chirildi")) { route(); poll(); }
     }));
     $$("[data-order]", root).forEach((a) => (a.onclick = () => orderModal(a.dataset.order)));
     $$("[data-tk]", root).forEach((b) => (b.onclick = async () => {
       const [id, action, restock] = b.dataset.tk.split(":");
       const note = $(`[data-note="${id}"]`, root).value.trim();
       if (action === "reject" && !note) return toast("Rad etish sababini yozing — u mijozga yuboriladi", "bad");
-      if (action === "approve" && !confirm(restock === "1" ? "Qaytarish tasdiqlansinmi? Mahsulot omborga qaytadi." : "Qaytarish tasdiqlansinmi? Mahsulot nuqsonli — omborga qaytmaydi.")) return;
+      if (action === "approve" && !await uiConfirm(restock === "1" ? "Qaytarish tasdiqlansinmi? Mahsulot omborga qaytadi." : "Qaytarish tasdiqlansinmi? Mahsulot nuqsonli — omborga qaytmaydi.")) return;
       if (await run(() => api("tickets/" + id, { method: "POST", body: { action, note, restock: restock === "1" } }), "Saqlandi, mijozga xabar yuborildi")) { route(); poll(); }
     }));
   };
@@ -586,7 +607,7 @@
     $("#pr-cat", root).onchange = (e) => { S.prodCat = +e.target.value; draw(); };
     $("#pr-add", root).onclick = () => productEditor(null);
     const demo = $("#pr-demo", root);
-    if (demo) demo.onclick = async () => { if (confirm("Barcha demo mahsulotlar o'chirilsinmi? (O'zingiz qo'shganlar qoladi)") && await run(() => api("demo", { method: "DELETE" }), "Demo mahsulotlar o'chirildi")) route(); };
+    if (demo) demo.onclick = async () => { if (await uiConfirm("Barcha demo mahsulotlar o'chirilsinmi? (O'zingiz qo'shganlar qoladi)") && await run(() => api("demo", { method: "DELETE" }), "Demo mahsulotlar o'chirildi")) route(); };
   };
 
   function productEditor(p) {
@@ -683,7 +704,7 @@
         for (const f of [...files].slice(0, 15 - st.images.length)) {
           const size = await imageSize(f);
           if (size && Math.abs(size.w / size.h - 3 / 4) > 0.03
-              && !confirm(`"${f.name}" — ${size.w}×${size.h}, 3:4 emas.\n\nMahsulot rasmlari 3:4 (tik) nisbatda bo'lishi kerak (masalan 900×1200).\nBaribir yuklansinmi? Rasm kesilmaydi, chetlariga oq fon qo'shiladi.`)) continue;
+              && !await uiConfirm(`"${f.name}" — ${size.w}×${size.h}, 3:4 emas.\n\nMahsulot rasmlari 3:4 (tik) nisbatda bo'lishi kerak (masalan 900×1200).\nBaribir yuklansinmi? Rasm kesilmaydi, chetlariga oq fon qo'shiladi.`)) continue;
           toast("⏳ Yuklanmoqda: " + f.name);
           const path = await run(() => upload(f, "product"));
           if (path) st.images.push({ path, color: "" });
@@ -734,7 +755,7 @@
       if (r) { closeModal(); route(); }
     };
     if (p) $("#pe-del", m).onclick = async () => {
-      if (confirm(`«${p.name}» o'chirilsinmi? (Buyurtmalar tarixida qoladi)`) && await run(() => api("products/" + p.id, { method: "DELETE" }), "O'chirildi")) { closeModal(); route(); }
+      if (await uiConfirm(`«${p.name}» o'chirilsinmi? (Buyurtmalar tarixida qoladi)`) && await run(() => api("products/" + p.id, { method: "DELETE" }), "O'chirildi")) { closeModal(); route(); }
     };
   }
 
@@ -791,7 +812,7 @@
       if (await run(() => api(cat ? "categories/" + cat.id : "categories", { method: cat ? "PATCH" : "POST", body }), "Saqlandi")) { closeModal(); route(); }
     };
     if (cat) $("#ca-del", m).onclick = async () => {
-      if (confirm("Kategoriya o'chirilsinmi?")) { const r = await run(() => api("categories/" + cat.id, { method: "DELETE" })); if (r) { toast(r.hidden ? "Eski buyurtmalar uchun yashirildi" : "O'chirildi"); closeModal(); route(); } }
+      if (await uiConfirm("Kategoriya o'chirilsinmi?")) { const r = await run(() => api("categories/" + cat.id, { method: "DELETE" })); if (r) { toast(r.hidden ? "Eski buyurtmalar uchun yashirildi" : "O'chirildi"); closeModal(); route(); } }
     };
   }
   function brandModal(b) {
@@ -811,38 +832,77 @@
       if (b) body.is_active = $("#bn-active", m).checked;
       if (await run(() => api(b ? "brands/" + b.id : "brands", { method: b ? "PATCH" : "POST", body }), "Saqlandi")) { closeModal(); route(); }
     };
-    if (b) $("#bn-del", m).onclick = async () => { if (confirm("Brend o'chirilsinmi?") && await run(() => api("brands/" + b.id, { method: "DELETE" }), "O'chirildi")) { closeModal(); route(); } };
+    if (b) $("#bn-del", m).onclick = async () => { if (await uiConfirm("Brend o'chirilsinmi?") && await run(() => api("brands/" + b.id, { method: "DELETE" }), "O'chirildi")) { closeModal(); route(); } };
   }
 
   // ================= OMBOR =================
   PAGES.stock = async (root) => {
-    const d = await api(`stock?q=${encodeURIComponent(S.stockQ)}&low=${S.stockLow ? 1 : 0}`);
-    root.innerHTML = `<div class="kpis">
-        <div class="kpi glass"><span>📦 Jami qoldiq</span><b>${num(d.value.units)} dona</b></div>
-        <div class="kpi glass"><span>💵 Tannarx bo'yicha</span><b>${money(d.value.cost)}</b></div>
-        <div class="kpi glass"><span>🏷 Sotuv narxida</span><b>${money(d.value.retail)}</b><small>potensial foyda ${money(d.value.retail - d.value.cost)}</small></div></div>
+    root.innerHTML = `<div class="kpis" id="sk-kpis"></div>
       <div class="card-head"><div class="btn-row"><input id="sk-q" class="search-in" placeholder="🔍 Mahsulot, brend yoki SKU" value="${esc(S.stockQ)}">
-        <label class="check"><input type="checkbox" id="sk-low" ${S.stockLow ? "checked" : ""}>Faqat kam qolganlar (≤ ${d.low})</label></div>
+        <label class="check"><input type="checkbox" id="sk-low" ${S.stockLow ? "checked" : ""}><span id="sk-low-l">Faqat kam qolganlar</span></label></div>
         <div class="btn-row"><button class="btn" id="sk-csv">📥 CSV</button><button class="btn primary" data-goto="purchases">🛒 Kirim qilish</button></div></div>
-      <div class="card glass table-wrap"><table class="t"><tr><th>Mahsulot</th><th>SKU</th><th class="right">Narx</th><th class="right">Tannarx</th><th class="right">Qoldiq</th><th>Inventarizatsiya</th><th></th></tr>
-        ${d.items.map((v) => `<tr><td><b>${esc(v.name)}</b>${v.vals.length ? `<div class="muted small">${esc(v.vals.join(", "))}</div>` : ""}<div class="muted small">${esc(v.brand || "")} · ${esc(v.category || "")}</div></td>
-          <td class="mono small">${esc(v.sku)}</td><td class="right nowrap">${money(v.price)}</td><td class="right nowrap muted">${money(v.cost)}</td>
-          <td class="right"><span class="badge ${v.stock <= 0 ? "red" : v.stock <= d.low ? "yellow" : "green"}">${v.stock}</span></td>
-          <td><div class="btn-row" style="flex-wrap:nowrap"><input type="number" min="0" data-sv="${v.id}" value="${v.stock}" style="width:84px"><button class="btn sm" data-ss="${v.id}">💾</button></div></td>
-          <td><button class="btn sm" data-mv="${v.id}" title="Harakatlar tarixi">🕒</button></td></tr>`).join("") || '<tr><td colspan="7" class="empty">Topilmadi</td></tr>'}</table></div>`;
+      <div class="hint" style="margin:-6px 0 12px">Narx, tannarx, SKU, qoldiq va "sotuvda" ni shu yerda o'zgartirib <b>💾</b> bosing. Rasm, nom va xarakteristikalar — <b>✏️</b> (mahsulot muharriri).</div>
+      <div class="card glass table-wrap" id="sk-list"></div>`;
     let tmr;
-    $("#sk-q", root).oninput = (e) => { clearTimeout(tmr); tmr = setTimeout(() => { S.stockQ = e.target.value.trim(); route(); }, 400); };
-    $("#sk-low", root).onchange = (e) => { S.stockLow = e.target.checked; route(); };
+    $("#sk-q", root).oninput = (e) => { clearTimeout(tmr); tmr = setTimeout(() => { S.stockQ = e.target.value.trim(); loadStock(); }, 350); };
+    $("#sk-low", root).onchange = (e) => { S.stockLow = e.target.checked; loadStock(); };
     $("#sk-csv", root).onclick = () => download("stock.csv");
     $$("[data-goto]", root).forEach((b) => (b.onclick = () => go(b.dataset.goto)));
-    $$("[data-ss]", root).forEach((b) => (b.onclick = async () => {
-      const id = b.dataset.ss, val = +$(`[data-sv="${id}"]`, root).value;
-      const note = prompt("Izoh (masalan: inventarizatsiya, shikastlangan)", "Inventarizatsiya");
-      if (note === null) return;
-      if (await run(() => api("stock/" + id, { method: "POST", body: { stock: val, note } }), "Qoldiq yangilandi")) route();
-    }));
-    $$("[data-mv]", root).forEach((b) => (b.onclick = () => movesModal(b.dataset.mv)));
+    await loadStock();
   };
+  async function loadStock() {
+    const list = $("#sk-list");
+    if (!list) return;
+    const d = await api(`stock?q=${encodeURIComponent(S.stockQ)}&low=${S.stockLow ? 1 : 0}`);
+    $("#sk-kpis").innerHTML = `<div class="kpi glass"><span>📦 Jami qoldiq</span><b>${num(d.value.units)} dona</b></div>
+      <div class="kpi glass"><span>💵 Tannarx bo'yicha</span><b>${money(d.value.cost)}</b></div>
+      <div class="kpi glass"><span>🏷 Sotuv narxida</span><b>${money(d.value.retail)}</b><small>potensial foyda ${money(d.value.retail - d.value.cost)}</small></div>`;
+    $("#sk-low-l").textContent = `Faqat kam qolganlar (≤ ${d.low})`;
+    list.innerHTML = `<table class="t"><tr><th>Mahsulot</th><th>SKU</th><th class="right">Narx</th><th class="right">Tannarx</th><th class="right">Qoldiq</th><th>Sotuvda</th><th></th></tr>
+      ${d.items.map((v) => `<tr data-row="${v.id}"><td><b>${esc(v.name)}</b>${v.vals.length ? `<div class="muted small">${esc(v.vals.join(", "))}</div>` : ""}<div class="muted small">${esc(v.brand || "")} · ${esc(v.category || "")}
+          ${!v.p_active ? ' · <span class="red">mahsulot yashirin</span>' : ""}</div></td>
+        <td><input class="stock-in sm" data-f="sku" value="${esc(v.sku)}"></td>
+        <td class="right"><input class="stock-in" type="number" min="0" step="1000" data-f="price" value="${v.price}"></td>
+        <td class="right"><input class="stock-in" type="number" min="0" step="1000" data-f="cost" value="${v.cost}"></td>
+        <td class="right"><input class="stock-in sm" type="number" min="0" data-f="stock" value="${v.stock}"><div><span class="badge ${v.stock <= 0 ? "red" : v.stock <= d.low ? "yellow" : "green"}">${v.stock <= 0 ? "tugagan" : v.stock + " dona"}</span></div></td>
+        <td><label class="switch"><input type="checkbox" data-f="is_active" ${v.is_active ? "checked" : ""}><i></i></label></td>
+        <td class="right nowrap"><button class="btn sm primary" data-save="${v.id}" title="Saqlash">💾</button>
+          <button class="icon-btn" data-edit="${v.product_id}" title="Mahsulot muharriri">✏️</button>
+          <button class="icon-btn" data-mv="${v.id}" title="Harakatlar tarixi">🕒</button>
+          <button class="icon-btn" data-vdel="${v.id}" title="Variantni o'chirish">🗑</button></td></tr>`).join("") || '<tr><td colspan="7" class="empty">Topilmadi</td></tr>'}</table>`;
+    const byId = Object.fromEntries(d.items.map((v) => [v.id, v]));
+    $$("tr[data-row] [data-f]", list).forEach((x) => (x.oninput = x.onchange = () => x.closest("tr").classList.add("dirty")));
+    $$("[data-save]", list).forEach((b) => (b.onclick = async () => {
+      const id = +b.dataset.save, v = byId[id], tr = b.closest("tr");
+      const val = (f) => $(`[data-f="${f}"]`, tr);
+      const patch = {};
+      if (+val("price").value !== v.price) patch.price = +val("price").value;
+      if (+val("cost").value !== v.cost) patch.cost = +val("cost").value;
+      if (val("sku").value.trim() !== v.sku) patch.sku = val("sku").value.trim();
+      if (val("is_active").checked !== !!v.is_active) patch.is_active = val("is_active").checked;
+      const stock = +val("stock").value;
+      if (!Object.keys(patch).length && stock === v.stock) return toast("O'zgarish yo'q");
+      if (Object.keys(patch).length && !await run(() => api("variants/" + id, { method: "PATCH", body: patch }))) return;
+      if (stock !== v.stock) {
+        const note = await uiPrompt(`Qoldiq ${v.stock} → ${stock}. Izoh (harakatlar tarixiga yoziladi):`, "Inventarizatsiya");
+        if (note === null) return loadStock();
+        if (!await run(() => api("stock/" + id, { method: "POST", body: { stock, note } }))) return;
+      }
+      toast("✅ Saqlandi — bot va Mini App'da yangilandi");
+      loadStock();
+    }));
+    $$("[data-edit]", list).forEach((b) => (b.onclick = async () => {
+      const c = await loadCatalog();
+      const p = c.products.find((x) => x.id === +b.dataset.edit);
+      if (p) productEditor(p);
+    }));
+    $$("[data-mv]", list).forEach((b) => (b.onclick = () => movesModal(b.dataset.mv)));
+    $$("[data-vdel]", list).forEach((b) => (b.onclick = async () => {
+      const v = byId[+b.dataset.vdel];
+      if (await uiConfirm(`«${v.name}${v.vals.length ? " · " + v.vals.join(", ") : ""}» varianti o'chirilsinmi? (Buyurtmalar tarixida qoladi)`)
+        && await run(() => api("variants/" + v.id, { method: "DELETE" }), "Variant o'chirildi")) loadStock();
+    }));
+  }
   const MOVE = { purchase: "🛒 Kirim", order: "📦 Sotuv", cancel: "↩️ Bekor qilingan", return: "↩️ Qaytarilgan", adjust: "✏️ Tuzatish" };
   async function movesModal(vid) {
     const d = await run(() => api("moves?variant_id=" + vid));
@@ -904,7 +964,7 @@
     $("#su-add", root).onclick = () => supplierModal(null);
     $$("[data-sued]", root).forEach((b) => (b.onclick = () => supplierModal(d.suppliers.find((x) => x.id === +b.dataset.sued))));
     $$("[data-sudel]", root).forEach((b) => (b.onclick = async () => {
-      if (confirm("Yetkazib beruvchi o'chirilsinmi? Kirimlar tarixi saqlanadi.") && await run(() => api("suppliers/" + b.dataset.sudel, { method: "DELETE" }), "O'chirildi")) route();
+      if (await uiConfirm("Yetkazib beruvchi o'chirilsinmi? Kirimlar tarixi saqlanadi.") && await run(() => api("suppliers/" + b.dataset.sudel, { method: "DELETE" }), "O'chirildi")) route();
     }));
     $$("[data-pid]", root).forEach((tr) => (tr.onclick = async () => {
       const r = await run(() => api("purchases/" + tr.dataset.pid));
@@ -914,7 +974,7 @@
         <div class="modal-foot"><button class="btn danger" id="pu-del">🗑 Kirimni o'chirish</button><span class="muted small" style="flex:1">Mahsulotlar qoldig'i kirimdagi miqdorga kamayadi.</span><button class="btn" data-close>Yopish</button></div>`);
       const del = r && $("#pu-del");
       if (del) del.onclick = async () => {
-        if (confirm(`${r.purchase.code} kirimi o'chirilsinmi? Qoldiq kamayadi.`) && await run(() => api("purchases/" + tr.dataset.pid, { method: "DELETE" }), "Kirim o'chirildi, qoldiq qaytarildi")) { closeModal(); route(); }
+        if (await uiConfirm(`${r.purchase.code} kirimi o'chirilsinmi? Qoldiq kamayadi.`) && await run(() => api("purchases/" + tr.dataset.pid, { method: "DELETE" }), "Kirim o'chirildi, qoldiq qaytarildi")) { closeModal(); route(); }
       };
     }));
   };
@@ -936,14 +996,14 @@
       const body = Object.fromEntries($$("[data-f]", tr).map((x) => [x.dataset.f, x.type === "checkbox" ? x.checked : x.type === "number" ? +x.value : x.value]));
       await run(() => api("regions/" + b.dataset.save, { method: "PATCH", body }), "Saqlandi");
     }));
-    $$("[data-del]", root).forEach((b) => (b.onclick = async () => { if (confirm("Hudud o'chirilsinmi?") && await run(() => api("regions/" + b.dataset.del, { method: "DELETE" }), "O'chirildi")) route(); }));
+    $$("[data-del]", root).forEach((b) => (b.onclick = async () => { if (await uiConfirm("Hudud o'chirilsinmi?") && await run(() => api("regions/" + b.dataset.del, { method: "DELETE" }), "O'chirildi")) route(); }));
     $$("[data-up]", root).forEach((b) => (b.onclick = async () => {
       const i = +b.dataset.up; if (!i) return;
       const ids = regions.map((r) => r.id); [ids[i - 1], ids[i]] = [ids[i], ids[i - 1]];
       if (await run(() => api("regions/order", { method: "POST", body: { ids } }))) route();
     }));
     $("#rg-add", root).onclick = async () => {
-      const name = prompt("Hudud nomi:");
+      const name = await uiPrompt("Hudud nomi:");
       if (name && await run(() => api("regions", { method: "POST", body: { name, fee: 70000, days_min: 2, days_max: 4 } }), "Qo'shildi")) route();
     };
   };
@@ -1006,7 +1066,7 @@
         $(`[data-err="${lang}"]`, el).textContent = unknown.length ? "Noma'lum o'zgaruvchi: " + unknown.map((v) => `{${v}}`).join(", ") : "";
       };
       $(`[data-save="${lang}"]`, el).onclick = () => saveText(x, lang, ta.value, el);
-      $(`[data-reset="${lang}"]`, el).onclick = () => { if (confirm("Asl matnga qaytarilsinmi?")) saveText(x, lang, "", el); };
+      $(`[data-reset="${lang}"]`, el).onclick = async () => { if (await uiConfirm("Asl matnga qaytarilsinmi?")) saveText(x, lang, "", el); };
     });
   }
   async function saveText(x, lang, value, el) {
@@ -1174,7 +1234,7 @@
       if (await run(() => api(p ? "promos/" + p.id : "promos", { method: p ? "PATCH" : "POST", body }), "Saqlandi")) { closeModal(); route(); }
     };
     if (p) $("#pm-del", m).onclick = async () => {
-      if (confirm(`${p.code} o'chirilsinmi?`) && await run(() => api("promos/" + p.id, { method: "DELETE" }), "O'chirildi")) { closeModal(); route(); }
+      if (await uiConfirm(`${p.code} o'chirilsinmi?`) && await run(() => api("promos/" + p.id, { method: "DELETE" }), "O'chirildi")) { closeModal(); route(); }
     };
   }
 
@@ -1196,7 +1256,7 @@
         : '<div class="empty">Baholar yo\'q</div>'}</div>`;
     $$("[data-low]", root).forEach((b) => (b.onclick = () => { S.reviewsLow = b.dataset.low === "1"; route(); }));
     $$("[data-rdel]", root).forEach((b) => (b.onclick = async () => {
-      if (confirm("Baho o'chirilsinmi? Reytingdan ham olib tashlanadi.") && await run(() => api("reviews/" + b.dataset.rdel, { method: "DELETE" }), "Baho o'chirildi")) route();
+      if (await uiConfirm("Baho o'chirilsinmi? Reytingdan ham olib tashlanadi.") && await run(() => api("reviews/" + b.dataset.rdel, { method: "DELETE" }), "Baho o'chirildi")) route();
     }));
     $$("[data-order]", root).forEach((a) => (a.onclick = () => orderModal(a.dataset.order)));
   };
@@ -1250,7 +1310,7 @@
     };
     draw();
     const send = async (test) => {
-      if (!test && !confirm(`Xabar ${st.users} ta foydalanuvchiga yuborilsinmi?`)) return;
+      if (!test && !await uiConfirm(`Xabar ${st.users} ta foydalanuvchiga yuborilsinmi?`)) return;
       const fd = new FormData();
       fd.append("text", ta.value);
       fd.append("buttons", JSON.stringify(buttons.filter((b) => b.text && b.url)));
@@ -1323,14 +1383,14 @@
       const [uid, ban] = b.dataset.ban.split(":");
       let reason = "";
       if (ban === "1") {
-        reason = prompt("Bloklash sababi (mijozga ko'rsatiladi, ixtiyoriy):", "");
+        reason = await uiPrompt("Bloklash sababi (mijozga ko'rsatiladi, ixtiyoriy):", "");
         if (reason === null) return;
-      } else if (!confirm("Mijoz blokdan chiqarilsinmi?")) return;
+      } else if (!await uiConfirm("Mijoz blokdan chiqarilsinmi?")) return;
       if (await run(() => api(`customers/${uid}/ban`, { method: "POST", body: { banned: ban === "1", reason: reason.trim() } }),
         ban === "1" ? "Bloklandi — bot va Mini App unga yopildi" : "Blokdan chiqarildi")) loadCustomers($("#cu-q").value.trim());
     }));
     $$("[data-cudel]").forEach((b) => (b.onclick = async () => {
-      if (confirm("Mijoz o'chirilsinmi? (savati, sevimlilari va obunalari ham o'chadi)") && await run(() => api("customers/" + b.dataset.cudel, { method: "DELETE" }), "Mijoz o'chirildi")) loadCustomers($("#cu-q").value.trim());
+      if (await uiConfirm("Mijoz o'chirilsinmi? (savati, sevimlilari va obunalari ham o'chadi)") && await run(() => api("customers/" + b.dataset.cudel, { method: "DELETE" }), "Mijoz o'chirildi")) loadCustomers($("#cu-q").value.trim());
     }));
   }
 
@@ -1354,7 +1414,7 @@
       if (await run(() => api("staff", { method: "POST", body: { query: $("#st-q", root).value, role: $("#st-role", root).value } }), "Qo'shildi va unga xabar yuborildi")) route();
     };
     $$("[data-rm]", root).forEach((b) => (b.onclick = async () => {
-      if (confirm("Bu odamdan huquq olib tashlansinmi?") && await run(() => api("staff/" + b.dataset.rm, { method: "DELETE" }), "Olib tashlandi")) route();
+      if (await uiConfirm("Bu odamdan huquq olib tashlansinmi?") && await run(() => api("staff/" + b.dataset.rm, { method: "DELETE" }), "Olib tashlandi")) route();
     }));
   };
 
