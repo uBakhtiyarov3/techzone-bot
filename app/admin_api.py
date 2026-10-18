@@ -964,6 +964,8 @@ def _order_row(o: dict) -> dict:
         "payment_label": PAYMENT_LABELS.get(o["payment_method"], ""),
         "pay_label": payments.PAY_LABELS.get(o.get("pay_status") or "", ""),
         "next": next_status(o["status"], o["order_type"]),
+        "pay_block": payments.blocks_accept(o),
+        "can_to_cash": payments.can_switch_to_cash(o),
     }
 
 
@@ -1022,14 +1024,30 @@ async def order_payment(request: web.Request) -> web.Response:
         return err("Topilmadi", 404)
     data = await _body(request)
     try:
-        order = await payments.decide(order, data.get("action") == "approve", request["admin_id"],
-                                      str(data.get("note") or ""))
+        order, accepted = await payments.decide(order, data.get("action") == "approve", request["admin_id"],
+                                                str(data.get("note") or ""))
     except payments.PaymentError as e:
         return err({"e_receipt_not_review": "Chek allaqachon ko'rib chiqilgan. Sahifani yangilang.",
                     "e_reject_reason": "Rad etish sababini yozing"}.get(str(e), str(e)), 409)
     from .notify import notify_pay_decision
 
-    _bg(request, notify_pay_decision, order)
+    _bg(request, notify_pay_decision, order, accepted)
+    return ok(**await _order_payload(order["id"]))
+
+
+@admin_only
+async def order_to_cash(request: web.Request) -> web.Response:
+    """Mijoz iltimosiga ko'ra karta to'lovini naqdga o'zgartirish."""
+    order = await db.get_order(int(request.match_info["id"]))
+    if not order:
+        return err("Topilmadi", 404)
+    try:
+        order = await payments.switch_to_cash(order)
+    except payments.PaymentError:
+        return err("Bu buyurtmani naqdga o'tkazib bo'lmaydi (to'langan yoki yopilgan)", 409)
+    from .notify import notify_switched_cash
+
+    _bg(request, notify_switched_cash, order)
     return ok(**await _order_payload(order["id"]))
 
 
@@ -1050,6 +1068,9 @@ async def order_status(request: web.Request) -> web.Response:
         step = next_status(order["status"], order["order_type"])
         if not step or step[0] != new:
             return err("Holat allaqachon o'zgargan. Sahifani yangilang.", 409)
+        if payments.blocks_accept(order):
+            return err("Karta orqali to'lov hali tasdiqlanmagan. Chek tasdiqlangach buyurtma avtomatik qabul "
+                       "qilinadi yoki to'lovni naqdga o'tkazing.", 409)
         await db.set_order_status(order["id"], new, request["admin_id"])
     _bg(request, notify_status_change, order["id"])
     return ok(**await _order_payload(order["id"]))
@@ -1432,6 +1453,7 @@ def setup(app: web.Application) -> None:
     r.add_post("/api/admin/orders/{id:\\d+}/status", order_status)
     r.add_post("/api/admin/orders/{id:\\d+}/serials", order_serials)
     r.add_post("/api/admin/orders/{id:\\d+}/payment", order_payment)
+    r.add_post("/api/admin/orders/{id:\\d+}/to-cash", order_to_cash)
     r.add_post("/api/admin/orders/{id:\\d+}/chat", order_chat_send)
     r.add_post("/api/admin/orders/{id:\\d+}/media", order_media_upload)
     r.add_delete("/api/admin/orders/{id:\\d+}", order_delete)

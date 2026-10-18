@@ -135,11 +135,17 @@ def order_staff_kb(order: dict) -> InlineKeyboardMarkup | None:
     step = next_status(order["status"], order.get("order_type") or "delivery")
     if not step and order["status"] != "delivered":
         return None
+    from .payments import blocks_accept, can_switch_to_cash
+
     oid = order["id"]
     rows = []
-    if step:
+    if step and blocks_accept(order):
+        rows.append([("⏳ To'lov tasdiqlanmagan", f"opw:{oid}")])
+    elif step:
         nxt, label = step
         rows.append([(label, f"ost:{oid}:{nxt}")])
+    if can_switch_to_cash(order):
+        rows.append([("💵 Naqdga o'tkazish", f"pcash:{oid}")])
     if step:  # yopilgan buyurtmada chat yo'q (flooddan himoya) — faqat IMEI
         rows.append([("📸 Rasm", f"oph:{oid}"), ("💬 Mijozga yozish", f"och:{oid}")])
     if order["status"] in ("accepted", "packing", "shipping", "delivered"):

@@ -8,7 +8,7 @@ from .. import chat, db, payments, rich, tickets
 from ..keyboards import B, cancel_kb, ikb, order_staff_kb, staff_kb
 from ..notify import (
     add_chat_and_relay, manager_ids, notify_pay_decision, notify_restocked, notify_status_change,
-    notify_ticket_decision, receipt_staff_kb, receipt_view, refresh_staff_messages, save_telegram_photo,
+    notify_switched_cash, notify_ticket_decision, receipt_staff_kb, receipt_view, refresh_staff_messages, save_telegram_photo,
     send_status_photo, ticket_staff_kb, ticket_view,
 )
 from ..order_card import send_order_card
@@ -27,6 +27,10 @@ CANCEL_REASONS = [
     "Manzil yetkazish hududidan tashqarida",
     "Boshqa sabab",
 ]
+
+
+PAY_WAIT_ALERT = ("💳 Karta orqali to'lov hali tasdiqlanmagan. Chek tasdiqlangach buyurtma avtomatik qabul "
+                  "qilinadi. Mijoz naqd to'lamoqchi bo'lsa, menejer «💵 Naqdga o'tkazish» ni bosadi.")
 
 
 class StaffInput(StatesGroup):
@@ -133,6 +137,10 @@ async def change_status(call: CallbackQuery, bot: Bot) -> None:
         await call.answer("Buyurtma topilmadi", show_alert=True)
         return
     otype = order.get("order_type") or "delivery"
+    if payments.blocks_accept(order):
+        await call.answer(PAY_WAIT_ALERT, show_alert=True)
+        await refresh_staff_messages(bot, order["id"])
+        return
     expected = (next_status(order["status"], otype) or (None,))[0]
     if expected != new_status:
         # boshqa xodim allaqachon o'zgartirgan
@@ -365,8 +373,8 @@ async def payment_action(call: CallbackQuery, state: FSMContext, bot: Bot) -> No
         await call.message.answer(f"❌ {order['code']} — chekni rad etish sababini yozing (mijozga yuboriladi):",
                                   reply_markup=cancel_kb())
         return
-    order = await payments.decide(order, True, call.from_user.id)
-    await notify_pay_decision(bot, order)
+    order, accepted = await payments.decide(order, True, call.from_user.id)
+    await notify_pay_decision(bot, order, accepted)
     await rich.edit(call.message, receipt_view(order), receipt_staff_kb(order))
     await call.answer("✅ To'lov tasdiqlandi, mijozga xabar yuborildi")
 
@@ -387,7 +395,7 @@ async def payment_reject_note(message: Message, state: FSMContext, bot: Bot) -> 
     if not order or order.get("pay_status") != "review":
         await message.answer("Chek topilmadi yoki allaqachon ko'rib chiqilgan.", reply_markup=staff_kb())
         return
-    order = await payments.decide(order, False, message.from_user.id, note)
+    order, _ = await payments.decide(order, False, message.from_user.id, note)
     await notify_pay_decision(bot, order)
     if data.get("msg_id"):
         try:
@@ -396,3 +404,29 @@ async def payment_reject_note(message: Message, state: FSMContext, bot: Bot) -> 
             pass
     await message.answer(f"❌ {order['code']} cheki rad etildi, mijozga sabab bilan xabar yuborildi.",
                          reply_markup=staff_kb())
+
+
+@router.callback_query(F.data.startswith("opw:"))
+async def pay_wait_alert(call: CallbackQuery) -> None:
+    await call.answer(PAY_WAIT_ALERT, show_alert=True)
+
+
+@router.callback_query(F.data.startswith("pcash:"))
+async def payment_to_cash(call: CallbackQuery, bot: Bot) -> None:
+    if call.from_user.id not in await manager_ids():
+        await call.answer("To'lov usulini faqat menejer o'zgartiradi", show_alert=True)
+        return
+    order = await db.get_order(int(call.data.split(":")[1]))
+    if not order or not payments.can_switch_to_cash(order):
+        await call.answer("Bu buyurtmani naqdga o'tkazib bo'lmaydi", show_alert=True)
+        return
+    order = await payments.switch_to_cash(order)
+    await notify_switched_cash(bot, order)
+    # buyurtma kartalari refresh_staff_messages bilan yangilandi; chek xabaridagi tugmalarni olib tashlaymiz
+    tracked = {(m["chat_id"], m["message_id"]) for m in await db.get_order_messages(order["id"])}
+    if (call.message.chat.id, call.message.message_id) not in tracked:
+        try:
+            await call.message.edit_reply_markup(reply_markup=None)
+        except Exception:  # noqa: BLE001
+            pass
+    await call.answer("💵 To'lov naqdga o'zgartirildi — endi buyurtmani qabul qilish mumkin", show_alert=True)

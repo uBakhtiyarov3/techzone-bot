@@ -26,6 +26,17 @@ def format_number(number: str) -> str:
     return " ".join(digits[i:i + 4] for i in range(0, len(digits), 4)) if len(digits) >= 12 else number
 
 
+def blocks_accept(order: dict) -> bool:
+    """Karta orqali to'lov tasdiqlanmaguncha buyurtmani qabul qilib bo'lmaydi."""
+    return (order.get("payment_method") == "card" and order.get("pay_status") != "paid"
+            and order.get("status") == "new")
+
+
+def can_switch_to_cash(order: dict) -> bool:
+    return (order.get("payment_method") == "card" and order.get("pay_status") != "paid"
+            and order.get("status") not in ("delivered", "cancelled", "returned"))
+
+
 def can_upload(order: dict) -> bool:
     return (order.get("payment_method") == "card" and order.get("pay_status") in CAN_UPLOAD
             and order.get("status") not in ("cancelled", "returned"))
@@ -39,7 +50,9 @@ async def submit_receipt(order: dict, path: str) -> dict:
     return await db.get_order(order["id"])
 
 
-async def decide(order: dict, approve: bool, by_user: int | None, note: str = "") -> dict:
+async def decide(order: dict, approve: bool, by_user: int | None, note: str = "") -> tuple[dict, bool]:
+    """Chek bo'yicha qaror. Tasdiqlansa yangi buyurtma avtomatik qabul qilinadi.
+    (yangilangan buyurtma, avtomatik qabul qilindimi) qaytaradi."""
     if order.get("pay_status") != "review":
         raise PaymentError("e_receipt_not_review")
     note = (note or "").strip()[:300]
@@ -49,6 +62,19 @@ async def decide(order: dict, approve: bool, by_user: int | None, note: str = ""
                      "WHERE id = ? AND pay_status = 'review'",
                      "paid" if approve else "rejected", "" if approve else note, by_user, now_str(), now_str(),
                      order["id"])
+    accepted = False
+    if approve and order["status"] == "new":
+        await db.set_order_status(order["id"], "accepted", by_user)
+        accepted = True
+    return await db.get_order(order["id"]), accepted
+
+
+async def switch_to_cash(order: dict) -> dict:
+    """Mijoz iltimosiga ko'ra karta o'rniga naqd to'lov (chek talab qilinmaydi)."""
+    if not can_switch_to_cash(order):
+        raise PaymentError("e_switch_cash")
+    await db.execute("UPDATE orders SET payment_method = 'cash', pay_status = '', pay_note = '', updated_at = ? "
+                     "WHERE id = ? AND payment_method = 'card'", now_str(), order["id"])
     return await db.get_order(order["id"])
 
 

@@ -477,7 +477,8 @@ def receipt_staff_kb(order: dict) -> InlineKeyboardMarkup | None:
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ To'lovni tasdiqlash", callback_data=f"py:ok:{order['id']}"),
          InlineKeyboardButton(text="❌ Rad etish", callback_data=f"py:no:{order['id']}")],
-        [InlineKeyboardButton(text="🧾 Buyurtma", callback_data=f"ov:{order['id']}")]])
+        [InlineKeyboardButton(text="💵 Naqdga o'tkazish", callback_data=f"pcash:{order['id']}"),
+         InlineKeyboardButton(text="🧾 Buyurtma", callback_data=f"ov:{order['id']}")]])
 
 
 def receipt_view(order: dict) -> Rich:
@@ -509,7 +510,17 @@ async def notify_receipt(bot: Bot, order: dict) -> None:
             log.warning("Chek menejerga yuborilmadi %s: %s", chat_id, e)
 
 
-async def notify_pay_decision(bot: Bot, order: dict) -> None:
+async def notify_switched_cash(bot: Bot, order: dict) -> None:
+    lang = await lang_of(order["user_id"])
+    try:
+        await bot.send_message(order["user_id"], t("pay_switched_cash", lang, code=order["code"]),
+                               reply_markup=order_track_kb(order["code"], lang))
+    except SAFE as e:
+        log.warning("Naqdga o'tkazish xabari yuborilmadi %s: %s", order["user_id"], e)
+    await refresh_staff_messages(bot, order["id"])
+
+
+async def notify_pay_decision(bot: Bot, order: dict, accepted: bool = False) -> None:
     lang = await lang_of(order["user_id"])
     try:
         if order["pay_status"] == "paid":
@@ -521,4 +532,7 @@ async def notify_pay_decision(bot: Bot, order: dict) -> None:
                                    reply_markup=receipt_customer_kb(order, lang))
     except SAFE as e:
         log.warning("To'lov qarori yuborilmadi %s: %s", order["user_id"], e)
-    await refresh_staff_messages(bot, order["id"])
+    if accepted:  # to'lov tasdiqlanishi bilan buyurtma avtomatik qabul qilindi
+        await notify_status_change(bot, order["id"])
+    else:
+        await refresh_staff_messages(bot, order["id"])

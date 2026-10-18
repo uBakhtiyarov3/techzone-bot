@@ -4,7 +4,7 @@ from aiohttp import FormData
 from app import db
 from app.orders import place_order
 from tests.conftest import H, admin_headers, variant_of
-from tests.test_bot_flows import ADMIN, CUSTOMER, click, env, photo, send, setup_people  # noqa: F401
+from tests.test_bot_flows import ADMIN, CUSTOMER, STAFF, click, env, photo, send, setup_people  # noqa: F401
 from tests.test_tickets import png
 
 
@@ -138,3 +138,70 @@ async def test_bot_card_checkout_receipt_and_manager_reject(env):
     await click(bot, dp, ADMIN, f"py:ok:{oid}")
     assert (await db.get_order(oid))["pay_status"] == "paid"
     assert any("tasdiqlandi" in x for x in s.texts(CUSTOMER))
+
+
+async def test_unpaid_card_order_cannot_be_accepted_until_paid(client):
+    hdr = await admin_headers(client)
+    await enable_card(client, hdr)
+    o = await card_order(client, 73)
+    row = (await (await client.get(f"/api/admin/orders/{o['id']}", headers=hdr)).json())["order"]
+    assert row["pay_block"] and row["can_to_cash"]
+    r = await client.post(f"/api/admin/orders/{o['id']}/status", headers=hdr, json={"status": "accepted"})
+    assert r.status == 409
+    await client.post(f"/api/orders/{o['code']}/receipt", headers=H(73), data=receipt_form())
+    r = await client.post(f"/api/admin/orders/{o['id']}/status", headers=hdr, json={"status": "accepted"})
+    assert r.status == 409  # chek tekshiruvda — hali ham yopiq
+    d = await (await client.post(f"/api/admin/orders/{o['id']}/payment", headers=hdr,
+                                 json={"action": "approve"})).json()
+    assert d["order"]["pay_status"] == "paid" and d["order"]["status"] == "accepted"  # avtomatik qabul
+    assert not d["order"]["pay_block"] and not d["order"]["can_to_cash"]
+
+
+async def test_switch_card_order_to_cash(client):
+    hdr = await admin_headers(client)
+    await enable_card(client, hdr)
+    o = await card_order(client, 74)
+    d = await (await client.post(f"/api/admin/orders/{o['id']}/to-cash", headers=hdr)).json()
+    assert d["order"]["payment_method"] == "cash" and d["order"]["pay_status"] == "" and not d["order"]["pay_block"]
+    r = await client.post(f"/api/admin/orders/{o['id']}/status", headers=hdr, json={"status": "accepted"})
+    assert r.status == 200
+    mine = (await (await client.get(f"/api/orders/{o['code']}", headers=H(74))).json())["order"]
+    assert mine["payment_method"] == "cash" and not mine["can_upload_receipt"]
+    r = await client.post(f"/api/admin/orders/{o['id']}/to-cash", headers=hdr)
+    assert r.status == 409
+
+
+async def test_bot_accept_locked_then_auto_accept_and_to_cash(env):
+    bot, dp, s = env
+    await setup_people(bot, dp)
+    await db.set_setting("card_enabled", "1")
+    await db.set_setting("card_number", "8600 1234 5678 9012")
+    v = await variant_of("AirPods Pro 2")
+    data = {"name": "Ali", "phone": "+998901234567", "order_type": "pickup", "payment_method": "card"}
+    oid = await place_order(CUSTOMER, data, [{"variant_id": v["id"], "qty": 1}])
+    from app.keyboards import order_staff_kb
+    kb = str(order_staff_kb(await db.get_order(oid)))
+    assert f"opw:{oid}" in kb and f"ost:{oid}:accepted" not in kb and f"pcash:{oid}" in kb
+    await click(bot, dp, STAFF, f"ost:{oid}:accepted")  # eski tugma bilan ham o'tmaydi
+    assert (await db.get_order(oid))["status"] == "new"
+
+    await click(bot, dp, CUSTOMER, f"sh:rc:{(await db.get_order(oid))['code']}")
+    await send(bot, dp, CUSTOMER, photo=photo())
+    s.calls.clear()
+    await click(bot, dp, ADMIN, f"py:ok:{oid}")
+    order = await db.get_order(oid)
+    assert order["pay_status"] == "paid" and order["status"] == "accepted"
+    assert any("tasdiqlandi" in x for x in s.texts(CUSTOMER))
+
+    # ikkinchi buyurtma: xodim naqdga o'tkaza olmaydi, menejer o'tkazadi
+    await db.execute("UPDATE orders SET created_at = '2000-01-01 00:00:00'")  # buyurtmalar orasidagi pauza
+    oid2 = await place_order(CUSTOMER, data, [{"variant_id": v["id"], "qty": 1}])
+    await click(bot, dp, STAFF, f"pcash:{oid2}")
+    assert (await db.get_order(oid2))["payment_method"] == "card"
+    s.calls.clear()
+    await click(bot, dp, ADMIN, f"pcash:{oid2}")
+    order2 = await db.get_order(oid2)
+    assert order2["payment_method"] == "cash" and order2["pay_status"] == ""
+    assert any("naqd" in x for x in s.texts(CUSTOMER))
+    await click(bot, dp, STAFF, f"ost:{oid2}:accepted")
+    assert (await db.get_order(oid2))["status"] == "accepted"

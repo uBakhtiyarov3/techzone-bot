@@ -374,11 +374,12 @@
     const d = await api(`orders?status=${S.ordersTab}&q=${encodeURIComponent(S.ordersQ)}`);
     list.innerHTML = d.orders.length ? `<table class="t"><tr><th>ID</th><th>Holat</th><th>Mijoz</th><th>Turi</th><th class="right">Summa</th><th>Vaqt</th><th></th></tr>
       ${d.orders.map((o) => `<tr class="click" data-id="${o.id}">
-        <td><b class="mono">${esc(o.code)}</b>${o.unread ? ` <span class="badge red">💬 ${o.unread}</span>` : ""}</td><td>${stBadge(o)}${o.pay_status === "review" ? ' <span class="badge yellow">🧾 chek</span>' : o.pay_status === "await" ? ' <span class="badge off">💳 to\'lanmagan</span>' : o.pay_status === "paid" ? ' <span class="badge green">💳 to\'langan</span>' : ""}</td>
+        <td><b class="mono">${esc(o.code)}</b>${o.unread ? ` <span class="badge red">💬 ${o.unread}</span>` : ""}</td><td>${stBadge(o)}${o.pay_status === "review" ? ' <span class="badge yellow">🧾 chek</span>' : o.pay_status === "await" ? ' <span class="badge off">💳 to\'lanmagan</span>' : o.pay_status === "paid" ? ' <span class="badge green">💳 to\'langan</span>' : o.pay_status === "rejected" ? ' <span class="badge red">🧾 chek rad etilgan</span>' : ""}</td>
         <td>${esc(o.customer_name)}<div class="muted small">${esc(phone(o.phone))}</div></td>
         <td class="small">${o.order_type === "pickup" ? "🏬 Olib ketish" : `🚚 ${esc(o.region_name)}`}<div class="muted">${o.units} dona</div></td>
         <td class="right nowrap"><b>${money(o.total)}</b></td><td class="small nowrap">${esc(dt(o.created_at))}</td>
-        <td class="right">${o.next ? `<button class="btn sm primary" data-next="${o.id}:${o.next[0]}">${esc(o.next[1])}</button>` : ""}</td></tr>`).join("")}</table>`
+        <td class="right">${o.pay_block ? '<span class="badge yellow" title="Chek tasdiqlangach avtomatik qabul qilinadi">⏳ To\'lov kutilmoqda</span>'
+          : o.next ? `<button class="btn sm primary" data-next="${o.id}:${o.next[0]}">${esc(o.next[1])}</button>` : ""}</td></tr>`).join("")}</table>`
       : '<div class="empty">Bu bo\'limda buyurtma yo\'q</div>';
     $$("tr[data-id]", list).forEach((tr) => (tr.onclick = (e) => { if (!e.target.closest("button")) orderModal(tr.dataset.id); }));
     $$("[data-next]", list).forEach((b) => (b.onclick = async () => {
@@ -428,22 +429,24 @@
             ${o.pay_note ? `<div class="list-row"><span>Rad etish sababi</span><span class="red">${esc(o.pay_note)}</span></div>` : ""}
             ${o.pay_receipt ? `<a href="${esc(imgUrl(o.pay_receipt))}" target="_blank" class="receipt"><img src="${esc(imgUrl(o.pay_receipt))}" alt="Chek"></a>` : '<p class="muted small">Mijoz hali chek yubormagan.</p>'}
             ${o.pay_status === "review" ? `<div class="hint">Summani (${money(o.total)}) hisobingizga tushganini tekshiring.</div><div class="btn-row" style="margin-top:10px">
-              <button class="btn primary" id="od-pay-ok">✅ To'lovni tasdiqlash</button><button class="btn danger" id="od-pay-no">❌ Rad etish</button></div>` : ""}</div>` : ""}
+              <button class="btn primary" id="od-pay-ok">✅ To'lovni tasdiqlash</button><button class="btn danger" id="od-pay-no">❌ Rad etish</button></div>` : ""}
+            ${o.can_to_cash ? `<div class="btn-row" style="margin-top:10px"><button class="btn sm" id="od-to-cash">💵 Naqdga o'tkazish</button><span class="muted small">mijoz iltimosiga ko'ra</span></div>` : ""}</div>` : ""}
           <div class="card glass"><h3>🕒 Tarix</h3><div class="timeline-mini">${d.log.map((l) => `<div>${esc(dt(l.at))} — ${esc(STATUS[l.status] || l.status)}</div>`).join("")}</div>
             ${o.cancel_reason ? `<p class="small red">Sabab: ${esc(o.cancel_reason)}</p>` : ""}</div>
           ${d.tickets.length ? `<div class="card glass"><h3>↩️ Murojaatlar</h3>${d.tickets.map((t) => `<div class="list-row"><span>${t.kind === "return" ? "Qaytarish" : "Muammo"} №${t.id}</span>${ticketBadge(t)}</div>`).join("")}
             <button class="btn sm" data-goto-t>Murojaatlar →</button></div>` : ""}
           ${d.review ? `<div class="card glass"><h3>⭐ Baho</h3><div class="yellow">${stars(d.review.rating)}</div>${d.review.comment ? `<p class="small">${esc(d.review.comment)}</p>` : ""}</div>` : ""}
           <div class="card glass"><h3>Amallar</h3><div class="btn-row">
-            ${o.next ? `<button class="btn primary" id="od-next">${esc(o.next[1])}</button>` : ""}
+            ${o.pay_block ? '<button class="btn" disabled title="Chek tasdiqlangach avtomatik qabul qilinadi">⏳ To\'lov tasdiqlanmagan</button>'
+              : o.next ? `<button class="btn primary" id="od-next">${esc(o.next[1])}</button>` : ""}
             ${["new", "accepted", "packing", "shipping"].includes(o.status) ? '<button class="btn danger" id="od-cancel">❌ Bekor qilish</button>' : ""}
             <button class="btn danger" id="od-del">🗑 O'chirish</button></div>
-            <div class="hint">Bekor qilish va o'chirishda mahsulotlar omborga qaytadi.</div></div>
+            <div class="hint">${o.pay_block ? "Karta orqali to'lov tasdiqlanmaguncha buyurtmani qabul qilib bo'lmaydi — chek tasdiqlangach avtomatik qabul qilinadi. " : ""}Bekor qilish va o'chirishda mahsulotlar omborga qaytadi.</div></div>
         </div>
       </div>`, true);
     const reopen = () => { closeModal(); orderModal(id); if (S.page === "orders") loadOrders(); };
     const act = async (fn, msg) => { if (await run(fn, msg)) reopen(); };
-    if (o.next) $("#od-next", m).onclick = () => act(() => api(`orders/${id}/status`, { method: "POST", body: { status: o.next[0] } }), "Holat yangilandi, mijozga xabar yuborildi");
+    if (o.next && !o.pay_block) $("#od-next", m).onclick = () => act(() => api(`orders/${id}/status`, { method: "POST", body: { status: o.next[0] } }), "Holat yangilandi, mijozga xabar yuborildi");
     const c = $("#od-cancel", m);
     if (c) c.onclick = () => { const reason = prompt("Bekor qilish sababi (mijozga yuboriladi):", "Mahsulot omborda qolmagan"); if (reason) act(() => api(`orders/${id}/status`, { method: "POST", body: { status: "cancelled", reason } }), "Bekor qilindi"); };
     $("#od-del", m).onclick = async () => {
@@ -476,6 +479,11 @@
     if (pno) pno.onclick = () => {
       const note = prompt("Rad etish sababi (mijozga yuboriladi):", "Summa hisobga tushmadi");
       if (note && note.trim().length >= 3) act(() => api(`orders/${id}/payment`, { method: "POST", body: { action: "reject", note: note.trim() } }), "Chek rad etildi, mijozga sabab yuborildi");
+    };
+    const tc = $("#od-to-cash", m);
+    if (tc) tc.onclick = () => {
+      if (confirm(`${o.code}: to'lov usuli naqdga o'zgartirilsinmi? Mijozga xabar boradi va buyurtmani qabul qilish mumkin bo'ladi.`))
+        act(() => api(`orders/${id}/to-cash`, { method: "POST" }), "To'lov naqdga o'zgartirildi");
     };
     const gt = $("[data-goto-t]", m);
     if (gt) gt.onclick = () => { closeModal(); go("tickets"); };
