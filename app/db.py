@@ -173,6 +173,7 @@ CREATE TABLE IF NOT EXISTS orders (
     pay_note TEXT NOT NULL DEFAULT '',          -- rad etish sababi
     pay_checked_by INTEGER,
     pay_at TEXT,
+    widget_msg_id INTEGER,                      -- jonli kuzatuvchi (Bot API 10.4 widget) xabari
     subtotal INTEGER NOT NULL,
     discount INTEGER NOT NULL DEFAULT 0,
     promo_code TEXT NOT NULL DEFAULT '',
@@ -342,6 +343,7 @@ CREATE INDEX IF NOT EXISTS idx_tickets_order ON tickets(order_id);
 MIGRATIONS: list[tuple[str, str, str]] = [
     ("users", "banned", "INTEGER NOT NULL DEFAULT 0"),
     ("users", "ban_reason", "TEXT NOT NULL DEFAULT ''"),
+    ("orders", "widget_msg_id", "INTEGER"),
     ("orders", "pay_status", "TEXT NOT NULL DEFAULT ''"),
     ("orders", "pay_receipt", "TEXT NOT NULL DEFAULT ''"),
     ("orders", "pay_note", "TEXT NOT NULL DEFAULT ''"),
@@ -379,6 +381,7 @@ DEFAULT_SETTINGS = {
     "card_number": "",
     "card_holder": "",
     "card_bank": "",
+    "live_tracker": "0",            # 1 — buyurtma holati jonli widgetda (Bot API 10.4, beta)
     "return_days": "14",            # yetkazilgandan keyin necha kun ichida qaytarish mumkin (0 — o'chirilgan)
 }
 

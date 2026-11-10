@@ -177,7 +177,11 @@ async def notify_status_change(bot: Bot, order_id: int) -> None:
 
         if order["status"] == "accepted" and order.get("pay_status") == "paid":
             text = t("pay_paid_msg", lang, code=order["code"]) + "\n" + text
-        view = Rich().img(await bot_ui.order_card(order, lang, await order_eta(order, lang))).p(text)
+        from . import widgets
+
+        eta = await order_eta(order, lang)
+        view = Rich().p(text) if await widgets.update_tracker(bot, order, lang, eta) else \
+            Rich().img(await bot_ui.order_card(order, lang, eta)).p(text)
         await rich.send(bot, order["user_id"], view, order_track_kb(order["code"], lang),
                         **({"message_effect_id": bot_ui.FX_PARTY} if order["status"] == "delivered" else {}))
         if order["status"] == "shipping" and (order.get("order_type") or "delivery") == "pickup":

@@ -1166,7 +1166,9 @@
             <div class="row"><label class="f"><span>Minimal buyurtma, so'm</span><input type="number" id="s-min" min="0" step="10000" value="${s.min_order}"></label>
               <label class="f"><span>"Oz qoldi" chegarasi, dona</span><input type="number" id="s-low" min="0" value="${s.low_stock}"></label>
               <label class="f"><span>Qaytarish muddati, kun</span><input type="number" id="s-ret" min="0" max="365" value="${s.return_days}"><div class="hint">0 — qaytarish o'chirilgan</div></label></div>
-            <div class="hint">Yetkazish narxlari va muddatlari — <a href="#regions">Yetkazish hududlari</a> bo'limida.</div></div>
+            <div class="hint">Yetkazish narxlari va muddatlari — <a href="#regions">Yetkazish hududlari</a> bo'limida.</div>
+            <label class="switch" style="margin-top:14px"><input type="checkbox" id="s-live" ${s.live_tracker ? "checked" : ""}><i></i>Jonli buyurtma kuzatuvchisi (beta)</label>
+            <div class="hint">Telegram'ning yangi widgetlari (Bot API 10.4): buyurtma holati bitta xabarda o'zi yangilanib turadi. Mijozning Telegram ilovasi yangi bo'lishi kerak; ishlamasa bot odatdagi rasm-kartani yuboradi.</div></div>
           <div class="card glass"><h3>💳 Karta orqali to'lov</h3>
             <label class="switch" style="margin-bottom:12px"><input type="checkbox" id="s-card-on" ${s.card_enabled ? "checked" : ""}><i></i>Kartaga o'tkazma bilan to'lovni yoqish</label>
             <label class="f"><span>Karta raqami</span><input id="s-card-num" inputmode="numeric" maxlength="23" value="${esc(s.card_number)}" placeholder="8600 1234 5678 9012"></label>
@@ -1215,6 +1217,7 @@
         shop_map_url: v("#s-map").trim(), shop_lat: v("#s-lat").trim(), shop_lng: v("#s-lng").trim(),
         delivery_enabled: $("#s-deliv", root).checked, pickup_enabled: $("#s-pick", root).checked,
         min_order: +v("#s-min") || 0, low_stock: +v("#s-low") || 0, return_days: +v("#s-ret") || 0,
+        live_tracker: $("#s-live", root).checked,
         card_enabled: $("#s-card-on", root).checked, card_number: v("#s-card-num").trim(),
         card_holder: v("#s-card-holder").trim(), card_bank: v("#s-card-bank").trim(),
       };

@@ -853,6 +853,7 @@ async def _settings_payload() -> web.Response:
         "shop_lng": raw.get("shop_lng") or "",
         "delivery_enabled": raw.get("delivery_enabled", "1") == "1",
         "pickup_enabled": raw.get("pickup_enabled", "1") == "1",
+        "live_tracker": raw.get("live_tracker", "0") == "1",
         "card_enabled": raw.get("card_enabled", "0") == "1",
         "card_number": raw.get("card_number") or "",
         "card_holder": raw.get("card_holder") or "",
@@ -903,6 +904,8 @@ async def settings_save(request: web.Request) -> web.Response:
     for key, limit in (("card_holder", 60), ("card_bank", 40)):
         if key in data:
             updates[key] = _str(data, key, limit)
+    if "live_tracker" in data:
+        updates["live_tracker"] = "1" if data["live_tracker"] else "0"
     if "card_enabled" in data:
         updates["card_enabled"] = "1" if data["card_enabled"] else "0"
     for key in ("shop_logo", "shop_mark", "shop_banner"):

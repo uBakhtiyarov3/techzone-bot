@@ -20,7 +20,7 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from .. import bot_ui, chat, db, inventory, payments, products, regions, rich, tickets
+from .. import bot_ui, chat, db, inventory, payments, products, regions, rich, tickets, widgets
 from ..catalog import (
     badge_labels, category_name, discount_active, option_value, product_desc, product_name, specs_public,
     variant_label, variant_price, warranty_text,
@@ -902,11 +902,12 @@ async def checkout_confirm(call: CallbackQuery, state: FSMContext, bot: Bot) -> 
         await call.message.delete()
     except TelegramBadRequest:
         pass
-    placed = Rich().img(await bot_ui.order_card(order, lang, await order_eta(order, lang)))
-    placed.p(t("order_placed", lang, code=order["code"], total=money_l(order["total"], lang)))
-    await rich.send(bot, call.from_user.id, placed, ikb([[(t("track_btn", lang), f"sh:o:{order['code']}"),
-                                                          (t("chat_btn", lang), f"sh:ch:{order['code']}")]]),
-                    message_effect_id=bot_ui.FX_PARTY)
+    placed_kb = ikb([[(t("track_btn", lang), f"sh:o:{order['code']}"), (t("chat_btn", lang), f"sh:ch:{order['code']}")]])
+    placed_text = t("order_placed", lang, code=order["code"], total=money_l(order["total"], lang))
+    eta = await order_eta(order, lang)
+    if not await widgets.send_tracker(bot, order, lang, eta, placed_text, placed_kb):
+        placed = Rich().img(await bot_ui.order_card(order, lang, eta)).p(placed_text)
+        await rich.send(bot, call.from_user.id, placed, placed_kb, message_effect_id=bot_ui.FX_PARTY)
     await _back_to_main(call.message, t("thanks", lang), call.from_user.id)
     await notify_new_order(bot, order_id, notify_customer=False)
 

@@ -61,3 +61,32 @@ async def test_status_message_has_card_and_effect(env):
     styles = {b.text: b.style for row in kb.inline_keyboard for b in row}
     assert styles["Qora"] == "primary" and styles["Ko'k"] is None
     assert any(st == "primary" for text, st in styles.items() if "Savatga" in text)
+
+
+async def test_live_tracker_widget(env):
+    """Yoqilganda: buyurtma — widget xabar, holat o'zgarishi — widget ma'lumoti yangilanadi (rasmsiz xabar)."""
+    import json
+
+    from app import widgets
+    from app.notify import notify_status_change
+    bot, dp, s = env
+    await setup_people(bot, dp)
+    v = await variant_of("AirPods Pro 2")
+    oid = await place_order(CUSTOMER, {"name": "Ali", "phone": "+998901234567", "region_id": 1, "address": "Chilonzor 7",
+                                       "payment_method": "cash"}, [{"variant_id": v["id"], "qty": 1}])
+    order = await db.get_order(oid)
+    assert not await widgets.send_tracker(bot, order, "uz", "", "x")  # o'chiq — widget yuborilmaydi
+    await db.set_setting("live_tracker", "1")
+    s.calls.clear()
+    assert await widgets.send_tracker(bot, order, "uz", "bugun", "Buyurtma berildi")
+    sent = next(c for c in s.calls if type(c).__name__ == "SendWidget")
+    data = json.loads(sent.chat_data)
+    assert data["code"] == order["code"] and data["i"] == 0 and len(data["steps"]) == 5 and len(sent.chat_data.encode()) <= 1024
+    assert (await db.get_order(oid))["widget_msg_id"]
+    await db.set_order_status(oid, "accepted", STAFF)
+    s.calls.clear()
+    await notify_status_change(bot, oid)
+    edit = next(c for c in s.calls if type(c).__name__ == "EditMessageWidgetData")
+    assert json.loads(edit.chat_data)["i"] == 1
+    note = next(c for c in s.calls if getattr(c, "chat_id", 0) == CUSTOMER and getattr(c, "rich_message", None))
+    assert "<img" not in note.rich_message.html
