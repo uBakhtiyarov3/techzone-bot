@@ -3,3 +3,4 @@ aiohttp>=3.9
 aiosqlite==0.22.1
 python-dotenv>=1.0
 pillow>=10
+openpyxl>=3.1

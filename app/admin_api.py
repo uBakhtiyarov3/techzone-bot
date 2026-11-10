@@ -501,6 +501,42 @@ async def product_update(request: web.Request) -> web.Response:
 
 
 @admin_only
+async def product_template(request: web.Request) -> web.Response:
+    """Excel shablon (kategoriya tanlansa — uning xarakteristika ustunlari bilan)."""
+    from . import product_import
+
+    cid = request.query.get("category_id", "")
+    category = await products.get_category(int(cid)) if cid.isdigit() and int(cid) else None
+    data = await asyncio.to_thread(product_import.build_template, await products.get_categories(),
+                                   await products.get_brands(), category)
+    return web.Response(body=data, headers={
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": 'attachment; filename="tovarlar_shablon.xlsx"'})
+
+
+@admin_only
+async def product_import_file(request: web.Request) -> web.Response:
+    """To'ldirilgan shablondan mahsulotlar yaratadi. Xato bo'lsa hech narsa yaratilmaydi."""
+    from . import product_import
+
+    raw, _ = await _read_upload(request)
+    if not raw:
+        return err("Fayl topilmadi")
+    if len(raw) > product_import.MAX_FILE:
+        return err("Fayl juda katta (maks. 5 MB)")
+    try:
+        rows = await asyncio.to_thread(product_import.read_rows, raw)
+    except ValueError as e:
+        return web.json_response({"ok": False, "error": str(e), "errors": [str(e)]}, status=400)
+    plans, errors, warnings = await product_import.plan(rows)
+    if errors:
+        return web.json_response({"ok": False, "error": f"{len(errors)} ta xato topildi — hech narsa yaratilmadi",
+                                  "errors": errors[:100]}, status=400)
+    count, skus, more = await product_import.create(plans, request["admin_id"])
+    return ok(products=count, skus=skus, warnings=(warnings + more)[:100])
+
+
+@admin_only
 async def product_delete(request: web.Request) -> web.Response:
     await products.update_product(int(request.match_info["id"]), is_deleted=1, is_active=0)
     return ok()
@@ -1583,6 +1619,8 @@ def setup(app: web.Application) -> None:
     r.add_delete("/api/admin/brands/{id:\\d+}", brand_delete)
     r.add_post("/api/admin/products", product_create)
     r.add_post("/api/admin/products/order", product_order)
+    r.add_get("/api/admin/products/template.xlsx", product_template)
+    r.add_post("/api/admin/products/import", product_import_file)
     r.add_put("/api/admin/products/{id:\\d+}", product_update)
     r.add_delete("/api/admin/products/{id:\\d+}", product_delete)
     r.add_delete("/api/admin/demo", demo_delete)

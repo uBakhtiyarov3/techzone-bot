@@ -67,7 +67,7 @@
       return r;
     }
     const data = await r.json().catch(() => ({ ok: false, error: "Server javobi noto'g'ri (" + r.status + ")" }));
-    if (!data.ok) throw new Error(data.error || "Xatolik");
+    if (!data.ok) throw Object.assign(new Error(data.error || "Xatolik"), { data });
     return data;
   }
 
@@ -585,7 +585,8 @@
     const c = await loadCatalog();
     root.innerHTML = `<div class="card-head"><div class="btn-row"><input id="pr-q" class="search-in" placeholder="🔍 Nomi, brend yoki SKU" value="${esc(S.prodQ)}">
         <select id="pr-cat" style="width:auto"><option value="0">Barcha kategoriyalar</option>${c.categories.map((x) => `<option value="${x.id}" ${S.prodCat === x.id ? "selected" : ""}>${esc(x.emoji)} ${esc(x.name)} (${x.count})</option>`).join("")}</select></div>
-        <div class="btn-row">${c.demo ? `<button class="btn danger sm" id="pr-demo">🧹 Demo mahsulotlarni o'chirish (${c.demo})</button>` : ""}<button class="btn primary" id="pr-add">＋ Yangi mahsulot</button></div></div>
+        <div class="btn-row">${c.demo ? `<button class="btn danger sm" id="pr-demo">🧹 Demo mahsulotlarni o'chirish (${c.demo})</button>` : ""}<div class="split"><button class="btn primary" id="pr-add">＋ Tovar kartochkasini yaratish</button><button class="btn primary" id="pr-more" title="Boshqa usullar">▾</button>
+          <div class="split-menu hidden" id="pr-menu"><button data-pm="manual">✍️ Qo'lda yaratish</button><button data-pm="file">📄 Fayldan yuklash</button></div></div></div></div>
       <div class="card glass table-wrap" id="pr-list"></div>`;
     const draw = () => {
       const q = S.prodQ.toLowerCase();
@@ -606,6 +607,10 @@
     $("#pr-q", root).oninput = (e) => { clearTimeout(tmr); tmr = setTimeout(() => { S.prodQ = e.target.value.trim(); draw(); }, 200); };
     $("#pr-cat", root).onchange = (e) => { S.prodCat = +e.target.value; draw(); };
     $("#pr-add", root).onclick = () => productEditor(null);
+    const menu = $("#pr-menu", root);
+    $("#pr-more", root).onclick = (e) => { e.stopPropagation(); menu.classList.toggle("hidden"); };
+    root.onclick = () => menu.classList.add("hidden");
+    $$("[data-pm]", root).forEach((b) => (b.onclick = () => { if (b.dataset.pm === "file") importModal(c); else productEditor(null); }));
     const demo = $("#pr-demo", root);
     if (demo) demo.onclick = async () => { if (await uiConfirm("Barcha demo mahsulotlar o'chirilsinmi? (O'zingiz qo'shganlar qoladi)") && await run(() => api("demo", { method: "DELETE" }), "Demo mahsulotlar o'chirildi")) route(); };
   };
@@ -756,6 +761,47 @@
     };
     if (p) $("#pe-del", m).onclick = async () => {
       if (await uiConfirm(`«${p.name}» o'chirilsinmi? (Buyurtmalar tarixida qoladi)`) && await run(() => api("products/" + p.id, { method: "DELETE" }), "O'chirildi")) { closeModal(); route(); }
+    };
+  }
+
+  // --- fayldan tovarlar yaratish (Excel shablon) ---
+  function importModal(c) {
+    const m = openModal(modalHead("📄 Fayldan tovarlarni yaratish") + `
+      <div class="step"><small>1-QADAM</small><b>Shablonni Excel formatida yuklab oling</b>
+        <p class="muted small">Bitta fayl bilan bir nechta mahsulotni birdaniga yaratasiz. Kategoriya tanlasangiz, shablonga shu kategoriya xarakteristikalari ustun bo'lib qo'shiladi. Ishni boshlashdan oldin «Ko'rsatma» varag'ini o'qib chiqing.</p>
+        <div class="btn-row"><select id="im-cat" style="width:auto"><option value="0">Kategoriyasiz (umumiy shablon)</option>${c.categories.map((x) => `<option value="${x.id}">${esc(x.emoji)} ${esc(x.name)}</option>`).join("")}</select>
+          <button class="btn primary" id="im-tpl">⬇️ Faylni yuklab olish</button></div></div>
+      <div class="step"><small>2-QADAM</small><b>Shablonga tovarlar haqidagi ma'lumotlarni kiriting</b>
+        <p class="muted small">Har bir satr — bitta SKU (variant). Bir mahsulotning rang/xotira variantlarini «Guruh» ustuni birlashtiradi. Yulduzcha (*) bilan belgilangan ustunlarni bo'sh qoldirmang. <b>Ustunlar nomi va tartibini o'zgartirmang.</b> Uzum Market shabloni ham qabul qilinadi.</p></div>
+      <div class="step"><small>3-QADAM</small><b>Tayyor faylni yuklang</b>
+        <p class="muted small">Barcha satrlar xatosiz to'ldirilgan bo'lsa, tovarlar darhol do'konda yaratiladi. Xato bo'lsa hech narsa yaratilmaydi — ro'yxat bo'yicha tuzatib, qayta yuklang.</p>
+        <label class="drop import-drop" id="im-drop"><span id="im-name">＋ Tayyor faylni biriktiring<br><span class="muted small">Plyusni bosing yoki faylni shu maydonga olib keling (.xlsx)</span></span><input type="file" id="im-file" accept=".xlsx,.xlsm" hidden></label>
+        <div id="im-result"></div></div>
+      <div class="modal-foot"><span style="flex:1"></span><button class="btn" data-close>Yopish</button><button class="btn primary" id="im-go" disabled>Yuklash</button></div>`, true);
+    let file = null;
+    const pick = (f) => { if (!f) return; file = f; $("#im-name", m).textContent = "📄 " + f.name; $("#im-go", m).disabled = false; $("#im-result", m).innerHTML = ""; };
+    const drop = $("#im-drop", m);
+    $("#im-file", m).onchange = (e) => pick(e.target.files[0]);
+    drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("over"); };
+    drop.ondragleave = () => drop.classList.remove("over");
+    drop.ondrop = (e) => { e.preventDefault(); drop.classList.remove("over"); pick(e.dataTransfer.files[0]); };
+    $("#im-tpl", m).onclick = () => download("products/template.xlsx?category_id=" + $("#im-cat", m).value);
+    $("#im-go", m).onclick = async () => {
+      const btn = $("#im-go", m), box = $("#im-result", m);
+      btn.disabled = true; btn.textContent = "⏳ Yuklanmoqda…";
+      const fd = new FormData(); fd.append("file", file, file.name);
+      const list = (items, cls) => `<ul class="import-list ${cls}">${items.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`;
+      try {
+        const r = await api("products/import", { method: "POST", form: fd });
+        box.innerHTML = `<div class="import-ok">✅ ${r.products} ta mahsulot (${r.skus} ta SKU) yaratildi</div>${r.warnings.length ? list(r.warnings, "warn") : ""}`;
+        toast(`✅ ${r.products} ta mahsulot yaratildi`);
+        S.catalog = null; file = null; $("#im-name", m).textContent = "＋ Yana fayl biriktirish";
+        PAGES.products($("#page"));
+      } catch (e) {
+        box.innerHTML = `<div class="import-bad">❌ ${esc(e.message)}</div>${e.data && e.data.errors ? list(e.data.errors, "bad") : ""}`;
+        btn.disabled = false;
+      }
+      btn.textContent = "Yuklash";
     };
   }
 

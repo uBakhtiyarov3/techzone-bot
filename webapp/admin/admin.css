@@ -252,3 +252,22 @@ input[type=file]::file-selector-button:hover { background: rgba(255, 255, 255, .
 tr.dirty td { background: rgba(255, 181, 71, .06); }
 .batches { margin-top: 4px; font-size: 11.5px; color: var(--muted); line-height: 1.5; white-space: nowrap; }
 .batches .cur { color: var(--text); font-weight: 600; }
+
+/* tovar yaratish: ajratilgan tugma va fayldan import */
+.split { position: relative; display: inline-flex; }
+.split > .btn:first-child { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.split > #pr-more { border-top-left-radius: 0; border-bottom-left-radius: 0; margin-left: 1px; padding-left: 12px; padding-right: 12px; }
+.split-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; min-width: 210px; padding: 6px; border-radius: 14px; background: #1c1c21; border: 1px solid var(--line-2); box-shadow: 0 14px 40px rgba(0, 0, 0, .5); }
+.split-menu button { display: block; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 10px; background: none; cursor: pointer; font-weight: 600; }
+.split-menu button:hover { background: rgba(255, 255, 255, .07); }
+.step { padding: 14px 0; border-bottom: 1px solid var(--line); }
+.step:last-of-type { border-bottom: 0; }
+.step > small { display: block; color: var(--brand); font-weight: 700; letter-spacing: .06em; font-size: 11.5px; margin-bottom: 4px; }
+.step p { margin: 6px 0 10px; }
+.import-drop { aspect-ratio: auto; min-height: 110px; width: 100%; font-size: 14px; font-weight: 600; }
+.import-ok, .import-bad { margin-top: 12px; padding: 10px 14px; border-radius: 12px; font-weight: 600; }
+.import-ok { background: rgba(52, 209, 122, .12); color: var(--green); }
+.import-bad { background: rgba(255, 107, 97, .12); color: var(--red); }
+.import-list { margin: 8px 0 0; padding-left: 20px; max-height: 220px; overflow: auto; font-size: 13px; }
+.import-list.bad li { color: #ffb3ad; }
+.import-list.warn li { color: var(--yellow); }
