@@ -72,6 +72,13 @@ T: dict[str, dict[str, str]] = {
     # ---------- katalog ----------
     "catalog_title": {"uz": "📱 <b>Katalog</b>\n\nKategoriyani tanlang 👇", "ru": "📱 <b>Каталог</b>\n\nВыберите категорию 👇"},
     "choose_product": {"uz": "Mahsulotni tanlang 👇", "ru": "Выберите товар 👇"},
+    "card_order_caption": {"uz": "Buyurtma holati", "ru": "Статус заказа"},
+    "card_ready": {"uz": "Tayyor", "ru": "Готов"},
+    "card_step_new": {"uz": "Berildi", "ru": "Оформлен"},
+    "card_step_accepted": {"uz": "Qabul", "ru": "Принят"},
+    "card_catalog": {"uz": "Katalog", "ru": "Каталог"},
+    "card_catalog_sub": {"uz": "{n} ta mahsulot · {cats} ta kategoriya", "ru": "{n} товаров · {cats} категорий"},
+    "card_cat_sub": {"uz": "{n} ta mahsulot · {price} dan", "ru": "{n} товаров · от {price}"},
     "all_brands": {"uz": "Barchasi", "ru": "Все"},
     "cat_empty": {"uz": "Bu bo'limda hozircha mahsulot yo'q.", "ru": "В этом разделе пока нет товаров."},
     "back_cats": {"uz": "⬅️ Kategoriyalar", "ru": "⬅️ Категории"},

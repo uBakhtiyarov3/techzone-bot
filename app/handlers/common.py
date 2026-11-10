@@ -18,6 +18,10 @@ from ..utils import h
 router = Router(name="common")
 
 
+def _plain(text: str) -> str:
+    return text.replace("👇", "").strip()
+
+
 async def send_main_menu(message: Message, user_id: int, text: str | None = None) -> None:
     lang = await lang_of(user_id)
     await message.answer(text or t("main_menu", lang), reply_markup=main_kb(await get_role(user_id), lang))
@@ -32,14 +36,13 @@ async def send_welcome(message: Message, user_id: int, first_name: str, is_new: 
     settings = public_settings(await db.get_settings())
     if not settings["accepting"]:
         greeting += t("closed_now", lang) + "\n\n"
-    greeting += t("how_order", lang)
     logo = await db.get_setting("shop_banner") or await db.get_setting("shop_logo")
-    await rich.answer(message, Rich().img(logo).p(greeting), main_kb(role, lang))
+    await rich.answer(message, Rich().img(logo).p(greeting.strip()), main_kb(role, lang))
 
-    ways = t("ways_bot", lang)
+    ways = [t("ways_bot", lang)]
     if webapp_ready():
-        ways = t("ways_mini", lang) + "\n" + ways
-    await message.answer(ways, reply_markup=start_inline_kb(lang))
+        ways.insert(0, t("ways_mini", lang))
+    await rich.answer(message, Rich().h(_plain(t("how_order", lang)), 3).ul(ways), start_inline_kb(lang))
     if not webapp_ready() and role == "manager":
         await message.answer(
             "ℹ️ <b>WEBAPP_URL</b> sozlanmagan yoki https emas — hozircha faqat bot ichida buyurtma ishlaydi.\n"

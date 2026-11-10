@@ -173,7 +173,13 @@ async def notify_status_change(bot: Bot, order_id: int) -> None:
     if not text:
         return
     try:
-        await bot.send_message(order["user_id"], text, reply_markup=order_track_kb(order["code"], lang))
+        from . import bot_ui
+
+        if order["status"] == "accepted" and order.get("pay_status") == "paid":
+            text = t("pay_paid_msg", lang, code=order["code"]) + "\n" + text
+        view = Rich().img(await bot_ui.order_card(order, lang, await order_eta(order, lang))).p(text)
+        await rich.send(bot, order["user_id"], view, order_track_kb(order["code"], lang),
+                        **({"message_effect_id": bot_ui.FX_PARTY} if order["status"] == "delivered" else {}))
         if order["status"] == "shipping" and (order.get("order_type") or "delivery") == "pickup":
             await send_pickup_location(bot, order["user_id"], lang)
         if order["status"] == "delivered" and not await db.get_review(order_id):
@@ -523,7 +529,9 @@ async def notify_switched_cash(bot: Bot, order: dict) -> None:
 async def notify_pay_decision(bot: Bot, order: dict, accepted: bool = False) -> None:
     lang = await lang_of(order["user_id"])
     try:
-        if order["pay_status"] == "paid":
+        if order["pay_status"] == "paid" and accepted:
+            pass  # «to'lov tasdiqlandi» holat kartasi bilan birga keladi (pastda)
+        elif order["pay_status"] == "paid":
             await bot.send_message(order["user_id"], t("pay_paid_msg", lang, code=order["code"]),
                                    reply_markup=order_track_kb(order["code"], lang))
         elif order["pay_status"] == "rejected":

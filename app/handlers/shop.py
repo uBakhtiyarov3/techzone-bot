@@ -20,7 +20,7 @@ from aiogram.types import (
     WebAppInfo,
 )
 
-from .. import chat, db, inventory, payments, products, regions, rich, tickets
+from .. import bot_ui, chat, db, inventory, payments, products, regions, rich, tickets
 from ..catalog import (
     badge_labels, category_name, discount_active, option_value, product_desc, product_name, specs_public,
     variant_label, variant_price, warranty_text,
@@ -29,12 +29,14 @@ from ..filters import Btn
 from ..i18n import both, money_l, stars, status_text, t, ticket_status
 from ..keyboards import ikb, main_kb, webapp_ready, webapp_url
 from ..notify import (
-    add_chat_and_relay, notify_customer_cancelled, notify_new_order, notify_receipt, notify_restocked, notify_review, notify_ticket_new,
+    add_chat_and_relay, notify_customer_cancelled, notify_new_order, notify_receipt, notify_restocked, notify_review,
+    notify_ticket_new, order_eta,
     refresh_staff_messages, save_telegram_photo,
 )
 from ..orders import (
     OrderError, can_customer_cancel, cancel_order, normalize_phone, place_order, public_settings, quote,
 )
+from ..brand import shop_name as shop_title
 from ..rich import Rich
 from ..roles import get_role, lang_of
 from ..utils import h, phone_fmt
@@ -130,7 +132,8 @@ def _in_stock(p: dict) -> bool:
 
 def _product_button(p: dict, lang: str) -> tuple[str, str]:
     price, many = _min_price(p)
-    label = f"{product_name(p, lang)} · {t('from', lang) if many else ''}{money_l(price, lang)}"
+    label = product_name(p, lang)  # narx jadvalda — tugma qisqa va o'qilishi oson
+    del price, many
     if discount_active(p):
         label = "🔥 " + label
     if not _in_stock(p):
@@ -161,7 +164,15 @@ async def categories_view(user_id: int, header: str = "") -> tuple[Rich, InlineK
     for p in items:
         counts[p["category_id"]] = counts.get(p["category_id"], 0) + 1
     shown = [c for c in cats if counts.get(c["id"])]
-    view = _with_header(Rich(), header).h(_title(t("catalog_title", lang).split("\n")[0]))
+    top = sorted(items, key=lambda p: (not _in_stock(p), -p.get("sold", 0)))
+    pics = list(dict.fromkeys(p["images"][0]["path"] for p in top if p["images"]))
+    view = _with_header(Rich(), header)
+    cover = await bot_ui.cover(lang, t("card_catalog", lang), shop_title(), t(
+        "card_catalog_sub", lang, n=len(items), cats=len(shown)), pics)
+    if cover:
+        view.img(cover)
+    else:
+        view.h(_title(t("catalog_title", lang).split("\n")[0]))
     view.p(t("catalog_title", lang).split("\n\n", 1)[-1])
     if not settings["accepting"]:
         view.quote(t("closed_now", lang))
@@ -197,7 +208,16 @@ async def category_view(user_id: int, cat_id: int, brand_id: int = 0, page: int 
     title = f"{cat['emoji']} {h(category_name(cat, lang))}"
     if brand_id and brand_id in brands:
         title += f" · {h(brands[brand_id])}"
-    view = _with_header(Rich(), header).h(title)
+    view = _with_header(Rich(), header)
+    cheapest = min((_min_price(p)[0] for p in shown), default=0)
+    cover = await bot_ui.cover(
+        lang, category_name(cat, lang) + (f" · {brands[brand_id]}" if brand_id in brands else ""),
+        t("card_catalog", lang), t("card_cat_sub", lang, n=len(shown), price=money_l(cheapest, lang)),
+        [p["images"][0]["path"] for p in chunk if p["images"]])
+    if cover:
+        view.img(cover)
+    else:
+        view.h(title)
     _products_table(view, chunk, lang).p(t("choose_product", lang))
 
     rows = []
@@ -289,6 +309,7 @@ async def product_view(user_id: int, pid: int, vid: int, q: int, header: str = "
         view.details("📝 " + ("Описание" if lang == "ru" else "Tavsif"), Rich().p(h(desc)))
 
     rows = []
+    selected: set[str] = set()
     active = [x for x in p["variants"] if x["is_active"]]
     for oi, o in enumerate(p["options"]):
         buttons = []
@@ -301,6 +322,7 @@ async def product_view(user_id: int, pid: int, vid: int, q: int, header: str = "
             buttons.append((mark + option_value(o, val, lang), f"sh:po:{pid}:{v['id']}:{oi}:{vi}"))
         if len(buttons) > 1:
             rows += [buttons[i:i + 3] for i in range(0, len(buttons), 3)]
+            selected.update(d for label, d in buttons if label.startswith("✅ "))
     if v["stock"] > 0:
         rows.append([("➖", f"sh:p:{pid}:{v['id']}:{q - 1}"), (t("pcs", lang, n=q), "sh:noop"),
                      ("➕", f"sh:p:{pid}:{v['id']}:{q + 1}")])
@@ -312,6 +334,10 @@ async def product_view(user_id: int, pid: int, vid: int, q: int, header: str = "
     cart_btn = await _cart_button(user_id, lang)
     rows.append([(t("back", lang), f"sh:cat:{p['category_id']}:0:0")] + ([cart_btn] if cart_btn else []))
     kb = _kb(rows)
+    for row in kb.inline_keyboard:  # tanlangan rang/xotira — ko'k tugma (✅ belgisi o'rniga)
+        for b in row:
+            if b.callback_data in selected:
+                b.style, b.text = "primary", b.text.removeprefix("✅ ")
     if webapp_ready():
         kb.inline_keyboard.append([InlineKeyboardButton(text=t("mini_inline", lang),
                                                         web_app=WebAppInfo(url=webapp_url(f"p{pid}")))])
@@ -515,7 +541,11 @@ async def cart_view(user_id: int, header: str = "") -> tuple[Rich, InlineKeyboar
     rows.append([(t("clear", lang), "sh:clr"), (t("catalog_btn", lang), "sh:cats")])
     if settings["accepting"]:
         rows.append([(t("checkout_btn", lang, sum=money_l(subtotal, lang)), "sh:co")])
-    return view, _kb(rows)
+    kb = _kb(rows)
+    for b in kb.inline_keyboard[-1]:
+        if b.callback_data == "sh:co":
+            b.style = "success"
+    return view, kb
 
 
 @router.message(StateFilter(None), Btn("b_cart"))
@@ -686,7 +716,7 @@ async def checkout_phone(message: Message, state: FSMContext) -> None:
         await _ask_comment(message, state, lang)
         return
     await state.set_state(Checkout.region)
-    await message.answer("🗺", reply_markup=_reply_kb(_cancel_row(lang)))
+    await message.answer(f"📞 <b>{phone_fmt(phone)}</b> ✅", reply_markup=_reply_kb(_cancel_row(lang)))
     subtotal = sum(i["qty"] * i["price"] for i in await db.cart_get(message.from_user.id))
     await rich.answer(message, await _regions_table(lang, subtotal), await _region_kb(lang, data.get("saved_region")))
 
@@ -868,10 +898,15 @@ async def checkout_confirm(call: CallbackQuery, state: FSMContext, bot: Bot) -> 
     await db.cart_clear(call.from_user.id)
     await call.answer(t("order_sent_toast", lang))
     order = await db.get_order(order_id)
-    await rich.edit(call.message, Rich().p(t("order_placed", lang, code=order["code"],
-                                             total=money_l(order["total"], lang))),
-                    ikb([[(t("track_btn", lang), f"sh:o:{order['code']}"),
-                          (t("chat_btn", lang), f"sh:ch:{order['code']}")]]))
+    try:
+        await call.message.delete()
+    except TelegramBadRequest:
+        pass
+    placed = Rich().img(await bot_ui.order_card(order, lang, await order_eta(order, lang)))
+    placed.p(t("order_placed", lang, code=order["code"], total=money_l(order["total"], lang)))
+    await rich.send(bot, call.from_user.id, placed, ikb([[(t("track_btn", lang), f"sh:o:{order['code']}"),
+                                                          (t("chat_btn", lang), f"sh:ch:{order['code']}")]]),
+                    message_effect_id=bot_ui.FX_PARTY)
     await _back_to_main(call.message, t("thanks", lang), call.from_user.id)
     await notify_new_order(bot, order_id, notify_customer=False)
 
@@ -936,7 +971,9 @@ async def order_detail_view(order: dict, lang: str) -> tuple[Rich, InlineKeyboar
     for r in await db.get_order_log(order["id"]):
         log_rows.setdefault(r["status"], r["at"])
     otype = order.get("order_type") or "delivery"
-    view = Rich().h(_title(t("order_title", lang, code=order["code"])))
+    cover = await bot_ui.order_card(order, lang, await order_eta(order, lang))
+    view = Rich().img(cover)
+    view.h(_title(t("order_title", lang, code=order["code"])))
     view.p(f"🕒 {order['created_at'][:16]} · " + t("type_delivery" if otype == "delivery" else "type_pickup", lang))
     if order["status"] in ("cancelled", "returned"):
         view.quote(f"<b>{t('s_' + order['status'], lang)}</b>" + (
@@ -949,7 +986,10 @@ async def order_detail_view(order: dict, lang: str) -> tuple[Rich, InlineKeyboar
             at = f" — {log_rows[key][5:16].replace('-', '.')}" if key in log_rows else ""
             steps.append((f"<b>{label}</b>" if i == reached else label) + at)
             checks.append(i <= reached)
-        view.ul(steps, checks)
+        if cover:  # holat rasmda ko'rinib turibdi — vaqtlar yig'iladigan blokda
+            view.details("🕒 " + ("История" if lang == "ru" else "Tarix"), Rich().ul(steps, checks))
+        else:
+            view.ul(steps, checks)
 
     lines = [(f"<b>{h(await _item_name(it, lang))}</b>" + (f"<br>{h(it['variant'])}" if it["variant"] else ""),
               it["qty"], it["price"] * it["qty"], None) for it in items]

@@ -260,6 +260,8 @@ async def send(bot: Bot, chat_id: int, rich: Rich, reply_markup=None, **kw) -> M
         _remember(rich, msg)
         return msg
     except TelegramBadRequest as e:
+        if kw.pop("message_effect_id", None):  # effekt qo'llab-quvvatlanmasa — effektsiz qayta urinamiz
+            return await send(bot, chat_id, rich, reply_markup, **kw)
         log.warning("Rich xabar qabul qilinmadi, oddiy matn: %s", e)
         token = _SKIP_RICH.set(True)
         try:
@@ -299,6 +301,9 @@ class RichSessionMiddleware(BaseRequestMiddleware):
 
     async def __call__(self, make_request, bot: Bot, method: TelegramMethod):
         rich_method = None
+        from .bot_ui import style_markup
+
+        style_markup(getattr(method, "reply_markup", None))  # tugma ranglari — bitta joyda
         if _SKIP_RICH.get():
             return await make_request(bot, method)
         if isinstance(method, SendMessage) and method.text and not getattr(method, "entities", None):

@@ -37,6 +37,18 @@ async def setup_bot_ui(bot: Bot) -> None:
         BotCommand(command="lang", description="Til / Язык"),
         BotCommand(command="help", description="Помощь"),
     ], language_code="ru")
+    # Bot profili (chat ochilganda ko'rinadigan tavsif) brend sozlamalaridan — white-label uchun
+    try:
+        s = await db.get_settings()
+        for lang, code in (("uz", None), ("ru", "ru")):
+            about = (s.get(f"about_{lang}") or "").strip()
+            short = (s.get("shop_tagline") or "").strip()
+            if about and (await bot.get_my_description(language_code=code)).description != about[:512]:
+                await bot.set_my_description(description=about[:512], language_code=code)
+            if short and (await bot.get_my_short_description(language_code=code)).short_description != short[:120]:
+                await bot.set_my_short_description(short_description=short[:120], language_code=code)
+    except Exception as e:  # noqa: BLE001
+        log.warning("Bot tavsifini o'rnatib bo'lmadi: %s", e)
     if webapp_ready():
         await bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(text="🛍 Do'kon", web_app=WebAppInfo(url=webapp_url()))
