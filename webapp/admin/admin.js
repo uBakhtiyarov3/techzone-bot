@@ -297,6 +297,18 @@
   const PAGES = {};
   function go(page) { location.hash = page; }
   window.addEventListener("hashchange", route);
+  // tezkor qidiruv: buyurtma kodi / telefon / ism — bitta topilsa darhol ochiladi
+  $("#gsearch").onkeydown = async (e) => {
+    if (e.key !== "Enter") return;
+    const q = e.target.value.trim();
+    if (!q) return;
+    const d = await run(() => api(`orders?status=all&q=${encodeURIComponent(q)}`));
+    if (!d) return;
+    if (d.orders.length === 1) { e.target.value = ""; orderModal(d.orders[0].id); return; }
+    S.ordersTab = "all"; S.ordersQ = q; e.target.blur();
+    if (!d.orders.length) toast("Buyurtma topilmadi — mijozlar bo'limida qidiring", "bad");
+    if (S.page === "orders") loadOrders(); else go("orders");
+  };
   $("#menu-toggle").onclick = () => { $("#sidebar").classList.add("open"); $("#sidebar-backdrop").classList.remove("hidden"); };
   $("#sidebar-backdrop").onclick = closeSidebar;
   function closeSidebar() { $("#sidebar").classList.remove("open"); $("#sidebar-backdrop").classList.add("hidden"); }
@@ -333,7 +345,13 @@
     const days = [...d.daily].reverse();
     const max = Math.max(1, ...days.map((x) => x.amount));
     const margin = pct(s.gross_profit, s.revenue - (s.revenue ? 0 : 0));
-    root.innerHTML = `
+    const left = d.setup.filter((x) => !x.done);
+    const setup = left.length ? `<div class="card glass setup"><div class="card-head"><h3>🚀 Do'konni ishga tushirish</h3>
+        <span class="muted small">${d.setup.length - left.length} / ${d.setup.length} bajarildi</span></div>
+      <div class="meter"><i style="width:${((d.setup.length - left.length) / d.setup.length) * 100}%"></i></div>
+      <div class="setup-list">${d.setup.map((x) => `<div class="setup-row ${x.done ? "done" : ""}"><span class="tick">${x.done ? "✓" : ""}</span>
+        <span class="lbl">${esc(x.label)}</span>${x.done ? "" : `<button class="btn sm primary" data-goto="${x.goto}">Ochish →</button>${["regions", "payment"].includes(x.key) ? `<button class="btn sm" data-skip="${x.key}">${x.key === "regions" ? "Tekshirdim" : "Kerak emas"}</button>` : ""}`}</div>`).join("")}</div></div>` : "";
+    root.innerHTML = setup + `
       <div class="card-head">${periodTabs(S.period)}<div class="btn-row"><button class="btn sm" data-goto="orders">📦 Buyurtmalar (${d.active_orders} faol)</button>
         <button class="btn sm" data-goto="purchases">🛒 Kirim qilish</button></div></div>
       <div class="kpis">
@@ -369,6 +387,7 @@
       </div>`;
     $$("[data-period]", root).forEach((b) => (b.onclick = () => { S.period = b.dataset.period; route(); }));
     $$("[data-goto]", root).forEach((b) => (b.onclick = () => go(b.dataset.goto)));
+    $$("[data-skip]", root).forEach((b) => (b.onclick = async () => { if (await run(() => api("setup", { method: "POST", body: { key: b.dataset.skip } }))) route(); }));
     $$("[data-paycheck]", root).forEach((b) => (b.onclick = () => { S.ordersTab = "payreview"; go("orders"); }));
     $$("[data-order]", root).forEach((a) => (a.onclick = () => orderModal(a.dataset.order)));
   };

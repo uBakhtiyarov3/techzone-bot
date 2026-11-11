@@ -172,8 +172,37 @@ async def dashboard(request: web.Request) -> web.Response:
         unread_chats=await chat.unread_orders_for_staff(),
         open_tickets=await tickets.open_count(),
         pay_review=await payments.review_count(),
+        setup=await _setup_steps(raw),
         status=public_settings(raw),
     )
+
+
+async def _setup_steps(s: dict) -> list[dict]:
+    """Yangi do'kon uchun ishga tushirish ro'yxati (hammasi bajarilsa panel uni ko'rsatmaydi)."""
+    own = await db.scalar("SELECT COUNT(*) FROM products WHERE is_deleted = 0 AND is_demo = 0")
+    demo = await db.scalar("SELECT COUNT(*) FROM products WHERE is_deleted = 0 AND is_demo = 1")
+    staff_n = await db.scalar("SELECT COUNT(*) FROM users WHERE role IN ('staff', 'manager')")
+    return [
+        {"key": "contacts", "label": "Telefon va do'kon manzilini kiriting",
+         "done": bool(s.get("phone") and s.get("shop_address")), "goto": "settings"},
+        {"key": "regions", "label": "Yetkazish narxlari va muddatlarini tekshiring",
+         "done": s.get("setup_regions") == "1", "goto": "regions"},
+        {"key": "products", "label": "Birinchi mahsulotingizni qo'shing", "done": bool(own), "goto": "products"},
+        {"key": "demo", "label": "Demo mahsulotlarni o'chiring", "done": not demo, "goto": "products"},
+        {"key": "staff", "label": "Buyurtmalarni qabul qiladigan xodim qo'shing", "done": bool(staff_n), "goto": "staff"},
+        {"key": "payment", "label": "Karta orqali to'lovni sozlang (ixtiyoriy)",
+         "done": s.get("card_enabled") == "1" or s.get("setup_payment") == "1", "goto": "settings"},
+    ]
+
+
+@admin_only
+async def setup_mark(request: web.Request) -> web.Response:
+    """Qo'lda belgilanadigan qadamlar: hududlar tekshirildi / karta to'lovi kerak emas."""
+    key = (await _body(request)).get("key")
+    if key not in ("regions", "payment"):
+        return err("Noto'g'ri qadam")
+    await db.set_setting(f"setup_{key}", "1")
+    return ok()
 
 
 # ====================== katalog ======================
@@ -1611,6 +1640,7 @@ def setup(app: web.Application) -> None:
     r.add_get("/api/admin/brand", public_brand_info)
     r.add_get("/api/admin/me", me)
     r.add_get("/api/admin/dashboard", dashboard)
+    r.add_post("/api/admin/setup", setup_mark)
     r.add_get("/api/admin/catalog", catalog_all)
     r.add_post("/api/admin/categories", category_create)
     r.add_post("/api/admin/categories/order", category_order)
