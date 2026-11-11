@@ -200,9 +200,36 @@
   }
   function rail(title, items, hash) {
     if (!items.length) return "";
-    return `<div class="section-h"><h2>${title}</h2><button data-go="${hash}">${T("seeAll")}${ico("chev")}</button></div>
+    return `<div class="section-h"><h2>${title}</h2>${hash ? `<button data-go="${hash}">${T("seeAll")}${ico("chev")}</button>` : ""}</div>
       <div class="rail">${items.map(card).join("")}</div>`;
   }
+  function greet() {
+    const h = new Date().getHours();
+    return T(h < 11 ? "hiMorning" : h < 18 ? "hiDay" : "hiEvening");
+  }
+  // oxirgi ko'rilgan mahsulotlar (qurilmada saqlanadi)
+  function rememberView(id) {
+    const list = [id, ...(store.get("recent") || []).filter((x) => x !== id)].slice(0, 12);
+    store.set("recent", list);
+  }
+  function recentProducts() {
+    return (store.get("recent") || []).map((id) => S.byId[id]).filter(Boolean).slice(0, 10);
+  }
+  // bosh sahifada — eng yangi faol buyurtma holati
+  async function drawActiveOrder() {
+    try {
+      if (!S.orders) S.orders = (await api("/api/orders")).orders;
+    } catch (e) { return; }
+    const box = document.getElementById("active-order");
+    const o = (S.orders || []).find((x) => ACTIVE.includes(x.status));
+    if (!box || !o) return;
+    const steps = ["new", "accepted", "packing", "shipping", "delivered"];
+    const k = Math.max(0, steps.indexOf(o.status));
+    box.innerHTML = `<button class="ao glass" data-go="#o${esc(o.code)}"><span class="ao-ico">${ico("box")}</span>
+      <span class="ao-t"><small>${T("activeOrder")} · ${esc(o.code)}</small><b>${esc(o.status_label)}</b>
+      <i class="ao-bar"><i style="width:${(k / 4) * 100}%"></i></i></span>${ico("chev")}</button>`;
+  }
+
   function renderHome() {
     const b = S.boot.brand;
     const heroes = S.boot.products.filter((p) => p.stock !== "out" && (p.discount || p.badges.includes("top") || p.badges.includes("hit"))).slice(0, 5);
@@ -210,7 +237,10 @@
       <div class="brandbar">${b.logo ? `<img class="logo" src="${esc(img(b.logo))}" alt="${esc(b.name)}">` : `<h1>${esc(b.name)}</h1>`}
         <span class="spacer"></span>
         <div class="lang glass"><button data-lang="uz" class="${S.lang === "uz" ? "on" : ""}">UZ</button><button data-lang="ru" class="${S.lang === "ru" ? "on" : ""}">RU</button></div></div>
+      <div class="hello"><h2>${esc(greet())}${S.boot.user.first_name ? ", " + esc(S.boot.user.first_name) : ""} 👋</h2><p>${T("hiSub")}</p></div>
       <label class="search glass">${ico("search")}<input id="home-q" type="search" placeholder="${esc(T("search"))}" autocomplete="off"></label>
+      <div class="trust">${["shield:perk1", "truck:perk2", "chat:perk3"].map((x) => { const [i, k] = x.split(":"); return `<span>${ico(i)}${T(k)}</span>`; }).join("")}</div>
+      <div id="active-order"></div>
       ${S.boot.settings.accepting ? "" : `<div class="note glass">${ico("alert")}<span>${T("notAccepting")}</span></div>`}
       ${heroes.length ? `<div class="rail hero-rail" id="hero">${heroes.map((p) => `
         <div class="hero glass" data-go="#p${p.id}" style="width:calc(100vw - 32px);max-width:608px;flex:none;scroll-snap-align:center">
@@ -220,17 +250,16 @@
           <img src="${esc(img(p.image))}" alt=""></div>`).join("")}</div>
         <div class="hero-dots" id="hero-dots">${heroes.map((_, i) => `<i class="${i ? "" : "on"}"></i>`).join("")}</div>` : ""}
       <div class="section-h"><h2>${T("categories")}</h2></div>
-      <div class="cats">${S.boot.categories.map((c) => `<button class="cat glass" data-go="#catalog/c${c.id}"><span class="emoji">${esc(c.emoji || "📦")}</span><b>${esc(c.name)}</b><small>${c.count}</small></button>`).join("")}</div>
+      <div class="cats">${S.boot.categories.map((c) => { const pic = (S.boot.products.find((p) => p.category_id === c.id && p.image) || {}).image;
+        return `<button class="cat glass${pic ? " has-pic" : ""}" data-go="#catalog/c${c.id}">${pic ? `<img src="${esc(img(pic))}" alt="" loading="lazy">` : `<span class="emoji">${esc(c.emoji || "📦")}</span>`}<b>${esc(c.name)}</b><small>${c.count} ${T("pcsShort")}</small></button>`; }).join("")}</div>
       ${S.boot.brands.length ? `<div class="section-h"><h2>${T("brands")}</h2></div>
         <div class="chips">${S.boot.brands.map((x) => `<button class="chip glass" data-go="#catalog/b${x.id}">${esc(x.name)}</button>`).join("")}</div>` : ""}
+      ${rail("👀 " + T("recent"), recentProducts(), "")}
       ${rail("🔥 " + T("hits"), topProducts("hits"), "#catalog")}
       ${rail("% " + T("deals"), topProducts("deals"), "#catalog")}
       ${rail("✨ " + T("newArrivals"), topProducts("new"), "#catalog")}
-      <div class="perks">
-        <div class="perk glass">${ico("shield")}${T("perk1")}</div>
-        <div class="perk glass">${ico("truck")}${T("perk2")}</div>
-        <div class="perk glass">${ico("chat")}${T("perk3")}</div></div>
       ${S.boot.settings.phone ? `<p class="center muted" style="margin-top:22px;font-size:13px">${T("questions")}: <a href="tel:${esc(S.boot.settings.phone.replace(/\s/g, ""))}">${esc(S.boot.settings.phone)}</a></p>` : ""}`;
+    drawActiveOrder();
     const q = document.getElementById("home-q");
     q.addEventListener("keydown", (e) => { if (e.key === "Enter" && q.value.trim()) { S.f.q = q.value.trim(); go("#catalog"); } });
     q.addEventListener("input", () => { if (q.value.trim().length >= 2) { S.f.q = q.value.trim(); go("#catalog"); } });
@@ -323,6 +352,7 @@
     view.innerHTML = `<div class="sk" style="height:100vw;max-height:520px;margin:-14px -16px 0;border-radius:0 0 34px 34px"></div>
       <div class="sk" style="height:28px;width:60%;margin-top:22px"></div><div class="sk" style="height:40px;width:40%;margin-top:14px"></div>`;
     const { product: p, alerts } = await loadProduct(r.id);
+    rememberView(p.id);
     const variants = p.variants;
     let v = variants.find((x) => x.stock !== "out") || variants[0];
     let sel = v ? [...v.vals] : [];
