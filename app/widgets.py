@@ -6,7 +6,7 @@ ma'lumoti (`chat_data`) yangilanadi va u chatda o'zi qayta chiziladi.
 Widget — tarmoqsiz, sandbox ichidagi bitta HTML hujjat (≤ 32 KB, siqilganda ≤ 4 KB). Holatni faqat bot
 o'zgartiradi. Hozircha Telegram widgetlarni faqat bot bilan shaxsiy chatda ko'rsatadi.
 
-aiogram 3.31 (Bot API 10.3) da bu metodlar yo'q — shu yerda e'lon qilingan. «live_tracker» sozlamasi
+Metod va turlar — app/botapi.py (Bot API 10.4 qatlami). «live_tracker» sozlamasi
 yoqilgandagina ishlaydi; Telegram rad etsa, bot odatdagi rasm-kartaga qaytadi.
 """
 from __future__ import annotations
@@ -16,35 +16,12 @@ import logging
 import zlib
 
 from aiogram import Bot
-from aiogram.methods import TelegramMethod
-from aiogram.types import InlineKeyboardMarkup, Message
 
 from . import db
+from .botapi import WIDGET_DATA_MAX, WIDGET_HTML_MAX, WIDGET_ZLIB_MAX, EditMessageWidgetData, SendWidget
 from .i18n import money_l, t
 
 log = logging.getLogger(__name__)
-
-
-class SendWidget(TelegramMethod[Message]):
-    __returning__ = Message
-    __api_method__ = "sendWidget"
-
-    chat_id: int
-    html: str
-    height: int | None = None
-    chat_data: str | None = None
-    caption: str | None = None
-    parse_mode: str | None = None
-    reply_markup: InlineKeyboardMarkup | None = None
-
-
-class EditMessageWidgetData(TelegramMethod[bool]):
-    __returning__ = bool
-    __api_method__ = "editMessageWidgetData"
-
-    chat_id: int
-    message_id: int
-    chat_data: str | None = None
 
 
 # Kuzatuvchi: ma'lumot chat_data (JSON) dan o'qiladi, o'zgarsa qayta chiziladi. Ranglar — Telegram mavzusidan.
@@ -76,7 +53,7 @@ r.style.setProperty('--c',c);r.style.setProperty('--g',c+'40');r.innerHTML=h}
 draw();TelegramWidget.onEvent('chatDataChanged',draw);TelegramWidget.ready&&TelegramWidget.ready();
 </script>"""
 
-assert len(TRACKER_HTML.encode()) <= 32768 and len(zlib.compress(TRACKER_HTML.encode(), 9)) <= 4096
+assert len(TRACKER_HTML.encode()) <= WIDGET_HTML_MAX and len(zlib.compress(TRACKER_HTML.encode(), 9)) <= WIDGET_ZLIB_MAX
 
 
 async def enabled() -> bool:
@@ -103,7 +80,7 @@ async def tracker_data(order: dict, lang: str, eta: str = "") -> str:
                   for s in STATUSES],
     }
     raw = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
-    if len(raw.encode()) > 1024:  # juda uzun izoh — qisqartiramiz
+    if len(raw.encode()) > WIDGET_DATA_MAX:  # juda uzun izoh — qisqartiramiz
         data["sub"] = ""
         raw = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     return raw

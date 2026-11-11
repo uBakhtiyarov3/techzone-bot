@@ -1,7 +1,7 @@
 import asyncio
 import logging
 
-from aiogram import Bot, Dispatcher
+from aiogram import Bot
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
@@ -9,6 +9,7 @@ from aiohttp import web
 
 from app import db
 from app.backup import daily_backup_loop
+from app.botapi import API_VERSION, ShopDispatcher, allowed_updates
 from app.config import config
 from app.handlers import setup_routers
 from app.keyboards import webapp_ready, webapp_url
@@ -66,19 +67,20 @@ async def main() -> None:
     bot = Bot(config.bot_token, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     # barcha oddiy matnli xabarlar Telegram rich message formatida yuboriladi (rad etilsa — oddiy matn)
     bot.session.middleware(RichSessionMiddleware())
-    dp = Dispatcher()
+    dp = ShopDispatcher()
     dp.include_router(setup_routers())
 
     runner = web.AppRunner(create_app(bot))
     await runner.setup()
     await web.TCPSite(runner, "0.0.0.0", config.port).start()
+    log.info("Bot API %s qatlami yoqilgan (aiogram %s)", API_VERSION, __import__("aiogram").__version__)
     log.info("Mini app server: http://0.0.0.0:%s  (WEBAPP_URL=%s)", config.port, config.webapp_url or "-")
 
     try:
         await setup_bot_ui(bot)
         await bot.delete_webhook(drop_pending_updates=False)
         tasks = [asyncio.create_task(daily_backup_loop(bot))]
-        await dp.start_polling(bot)
+        await dp.start_polling(bot, allowed_updates=allowed_updates(dp))
         for task in tasks:
             task.cancel()
     finally:
