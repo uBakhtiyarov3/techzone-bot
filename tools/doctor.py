@@ -6,6 +6,7 @@ Bosh menejerga (ADMIN_IDS dagi birinchi ID) 4 ta sinov xabari yuboriladi. Bot is
 ishlatish mumkin — faqat xabar yuboradi, hech narsani o'zgartirmaydi.
 """
 import asyncio
+import os
 import sys
 import traceback
 import urllib.request
@@ -36,7 +37,9 @@ async def main() -> None:
         line(BAD, "ADMIN_IDS bo'sh — sinov xabarini kimga yuborishni bilmayman")
         return
     # kimga yuborish: buyruqdagi ID (python tools/doctor.py 123456789) yoki ADMIN_IDS dagi birinchisi
-    admin = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else sorted(config.admin_ids)[0]
+    # .env dagi tartib bo'yicha birinchi ID (config.admin_ids — to'plam, tartibni saqlamaydi)
+    first = next((int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x.isdigit()), 0)
+    admin = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else first
     await db.init_db(config.db_path, seed_demo=False)
 
     # 1. shriftlar va karta chizish
@@ -72,8 +75,8 @@ async def main() -> None:
 
         # 3. rich xabar (oddiy) — middleware siz, to'g'ridan-to'g'ri
         try:
-            await bot.send_rich_message(admin, InputRichMessage(html="<h3>Doctor 1/4</h3><p>Rich xabar ishlaydi.</p>"))
-            line(OK, "1/4 rich xabar yuborildi")
+            m = await bot.send_rich_message(admin, InputRichMessage(html="<h3>Doctor 1/4</h3><p>Rich xabar ishlaydi.</p>"))
+            line(OK, f"1/4 rich xabar yuborildi (chat {m.chat.id}, xabar #{m.message_id})")
         except Exception as e:  # noqa: BLE001
             line(BAD, f"1/4 rich xabar rad etildi: {e}")
 
