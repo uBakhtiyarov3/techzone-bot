@@ -1,6 +1,6 @@
 """Serverda bot dizaynini tekshirish: har bir qadamni haqiqiy Telegram bilan sinaydi va natijani yozadi.
 
-    sudo docker compose exec shop python tools/doctor.py
+    sudo docker compose exec shop python tools/doctor.py [telegram_id]
 
 Bosh menejerga (ADMIN_IDS dagi birinchi ID) 4 ta sinov xabari yuboriladi. Bot ishlayotgan paytda ham
 ishlatish mumkin — faqat xabar yuboradi, hech narsani o'zgartirmaydi.
@@ -35,7 +35,8 @@ async def main() -> None:
     if not config.admin_ids:
         line(BAD, "ADMIN_IDS bo'sh — sinov xabarini kimga yuborishni bilmayman")
         return
-    admin = sorted(config.admin_ids)[0]
+    # kimga yuborish: buyruqdagi ID (python tools/doctor.py 123456789) yoki ADMIN_IDS dagi birinchisi
+    admin = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else sorted(config.admin_ids)[0]
     await db.init_db(config.db_path, seed_demo=False)
 
     # 1. shriftlar va karta chizish
@@ -62,6 +63,12 @@ async def main() -> None:
     try:
         me = await bot.get_me()
         line(OK, f"bot: @{me.username}")
+        try:
+            chat = await bot.get_chat(admin)
+            who = " ".join(x for x in (chat.first_name, chat.last_name) if x) + (f" (@{chat.username})" if chat.username else "")
+            line(OK, f"sinov xabarlari kimga: ID {admin} — {who}")
+        except Exception as e:  # noqa: BLE001
+            line(BAD, f"ID {admin} ga yozib bo'lmaydi: {e}")
 
         # 3. rich xabar (oddiy) — middleware siz, to'g'ridan-to'g'ri
         try:
