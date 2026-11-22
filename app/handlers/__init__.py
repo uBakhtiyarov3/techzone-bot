@@ -4,6 +4,7 @@ from aiogram import BaseMiddleware, Router
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from . import admin, common, shop, staff
+from .. import botapi
 
 
 class BanMiddleware(BaseMiddleware):
@@ -35,5 +36,5 @@ def setup_routers() -> Router:
     root.message.outer_middleware(BanMiddleware())
     root.callback_query.outer_middleware(BanMiddleware())
     # tartib muhim: buyurtma va menejer FSM holatlari umumiy tugmalardan oldin tekshiriladi
-    root.include_routers(shop.router, admin.router, staff.router, common.router, common.fallback_router)
+    root.include_routers(botapi.router, shop.router, admin.router, staff.router, common.router, common.fallback_router)
     return root

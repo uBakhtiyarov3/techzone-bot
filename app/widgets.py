@@ -6,7 +6,7 @@ ma'lumoti (`chat_data`) yangilanadi va u chatda o'zi qayta chiziladi.
 Widget — tarmoqsiz, sandbox ichidagi bitta HTML hujjat (≤ 32 KB, siqilganda ≤ 4 KB). Holatni faqat bot
 o'zgartiradi. Hozircha Telegram widgetlarni faqat bot bilan shaxsiy chatda ko'rsatadi.
 
-Metod va turlar — app/botapi.py (Bot API 10.4 qatlami). «live_tracker» sozlamasi
+Metodlar — aiogram 3.33 (Bot API 10.4). «live_tracker» sozlamasi
 yoqilgandagina ishlaydi; Telegram rad etsa, bot odatdagi rasm-kartaga qaytadi.
 """
 from __future__ import annotations
@@ -18,7 +18,9 @@ import zlib
 from aiogram import Bot
 
 from . import db
-from .botapi import WIDGET_DATA_MAX, WIDGET_HTML_MAX, WIDGET_ZLIB_MAX, EditMessageWidgetData, SendWidget
+from aiogram.methods import EditMessageWidgetData, SendWidget
+
+from .botapi import WIDGET_DATA_MAX, WIDGET_HTML_MAX, WIDGET_ZLIB_MAX
 from .i18n import money_l, t
 
 log = logging.getLogger(__name__)

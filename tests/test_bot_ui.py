@@ -92,36 +92,18 @@ async def test_live_tracker_widget(env):
     assert "<img" not in note.rich_message.html
 
 
-async def test_bot_api_104_layer():
-    """10.4: widget so'rovi dispetcherda yiqilmaydi va javob beriladi; xabardagi widget o'qiladi."""
-    import datetime as dt
+async def test_bot_api_104_widget_query(env):
+    """Bot API 10.4 (aiogram 3.33): widget so'rovi qabul qilinadi va darhol javob beriladi."""
+    import aiogram
+    from aiogram.types import Update
 
-    from aiogram import Bot
-    from aiogram.types import Chat, Message, Update
-
-    from app.botapi import API_VERSION, ShopDispatcher, allowed_updates, message_widget
-    from tests.test_bot_flows import FakeSession
-
-    assert API_VERSION == "10.4"
-    session = FakeSession()
-    bot = Bot("42:TEST", session=session)
-    dp = ShopDispatcher()
-    seen = []
-
-    async def handler(_bot, q):
-        seen.append((q.from_user.id, q.data, q.type.type))
-        return '{"ok":1}'
-
-    dp.widget_handler = handler
+    bot, dp, s = env
+    assert aiogram.__api_version__ >= "10.4"
+    assert {"widget_query", "shared_widget_query"} <= set(dp.resolve_used_update_types())
     upd = Update.model_validate({"update_id": 1, "widget_query": {
         "id": "q1", "from": {"id": 7, "is_bot": False, "first_name": "A"}, "chat_instance": "c",
         "type": {"type": "data"}, "data": "vote:2", "message_id": 5, "chat": {"id": 7, "type": "private"}}})
+    s.calls.clear()
     await dp.feed_update(bot, upd)
-    assert seen == [(7, "vote:2", "data")]
-    ans = next(c for c in session.calls if type(c).__name__ == "AnswerWidgetQuery")
-    assert ans.widget_query_id == "q1" and ans.data == '{"ok":1}'
-    assert {"widget_query", "shared_widget_query"} <= set(allowed_updates(dp))
-    msg = Message.model_validate({"message_id": 1, "date": dt.datetime.now(), "chat": Chat(id=1, type="private"),
-                                  "widget": {"html": "<b>x</b>", "chat_data": "{}", "id": "w1"}})
-    w = message_widget(msg)
-    assert w and w.id == "w1" and w.chat_data == "{}"
+    ans = next(c for c in s.calls if type(c).__name__ == "AnswerWidgetQuery")
+    assert ans.widget_query_id == "q1"

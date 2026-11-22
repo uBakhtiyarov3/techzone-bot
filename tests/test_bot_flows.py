@@ -69,7 +69,8 @@ async def env(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "admin_ids", {ADMIN})
     monkeypatch.setattr(config, "uploads_dir", tmp_path / "uploads")
     from app.handlers import admin, common, shop, staff
-    for r in (shop.router, admin.router, staff.router, common.router, common.fallback_router):
+    from app import botapi
+    for r in (botapi.router, shop.router, admin.router, staff.router, common.router, common.fallback_router):
         r._parent_router = None
     session = FakeSession()
     bot = Bot("42:TEST", session=session, default=DefaultBotProperties(parse_mode="HTML"))
