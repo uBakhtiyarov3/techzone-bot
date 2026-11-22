@@ -106,10 +106,28 @@ async def main() -> None:
             line(OK, "4/4 effekt bilan xabar yuborildi")
         except Exception as e:  # noqa: BLE001
             line(BAD, f"4/4 effekt rad etildi: {e}")
+        # 7. Bot API 10.4 jonli widget: yuborish va 3 soniyadan keyin holatini yangilash
+        try:
+            from aiogram.methods import EditMessageWidgetData, SendWidget
+
+            from app import widgets
+            demo = {"id": 0, "code": "TEST-1", "status": "accepted", "order_type": "delivery", "total": 17370000,
+                    "region_name": "Toshkent shahri", "cancel_reason": ""}
+            w = await bot(SendWidget(chat_id=admin, html=widgets.TRACKER_HTML, height=190,
+                                     chat_data=await widgets.tracker_data(demo, "uz", "bugun–ertaga"),
+                                     caption="Doctor 5/5: jonli widget — 3 soniyadan keyin «Yo'lda» ga o'tadi"))
+            line(OK, f"5/5 widget yuborildi (xabar #{w.message_id})")
+            await asyncio.sleep(3)
+            await bot(EditMessageWidgetData(chat_id=admin, message_id=w.message_id,
+                                            chat_data=await widgets.tracker_data({**demo, "status": "shipping"}, "uz",
+                                                                                 "bugun–ertaga")))
+            line(OK, "5/5 widget holati yangilandi (Qabul qilindi → Yo'lda)")
+        except Exception as e:  # noqa: BLE001
+            line(BAD, f"5/5 widget ishlamadi: {e}")
     finally:
         await bot.session.close()
         await db.close_db()
-    print("\nTelegram'da 4 ta xabarni ko'ring. Yuqoridagi natijani menga yuboring.")
+    print("\nTelegram'da 5 ta xabarni ko'ring. Yuqoridagi natijani menga yuboring.")
 
 
 if __name__ == "__main__":

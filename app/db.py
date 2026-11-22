@@ -381,7 +381,7 @@ DEFAULT_SETTINGS = {
     "card_number": "",
     "card_holder": "",
     "card_bank": "",
-    "live_tracker": "0",            # 1 — buyurtma holati jonli widgetda (Bot API 10.4, beta)
+    "live_tracker": "1",            # 1 — buyurtma holati jonli widgetda (Bot API 10.4, beta)
     "return_days": "14",            # yetkazilgandan keyin necha kun ichida qaytarish mumkin (0 — o'chirilgan)
 }
 

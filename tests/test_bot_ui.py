@@ -75,6 +75,7 @@ async def test_live_tracker_widget(env):
     oid = await place_order(CUSTOMER, {"name": "Ali", "phone": "+998901234567", "region_id": 1, "address": "Chilonzor 7",
                                        "payment_method": "cash"}, [{"variant_id": v["id"], "qty": 1}])
     order = await db.get_order(oid)
+    await db.set_setting("live_tracker", "0")
     assert not await widgets.send_tracker(bot, order, "uz", "", "x")  # o'chiq — widget yuborilmaydi
     await db.set_setting("live_tracker", "1")
     s.calls.clear()
